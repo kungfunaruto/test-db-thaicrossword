@@ -1,0 +1,11 @@
+@tailwind base; @tailwind components; @tailwind utilities;
+@layer base {
+  html { scroll-behavior: smooth; }
+  body { @apply bg-white font-sans text-ink antialiased; overflow-wrap: break-word; }
+  h1, h2, h3, h4 { @apply font-semibold text-navy-dark text-balance; }
+  h1, h2 { @apply font-serif; }
+  p, li, dd { @apply text-pretty; }
+  :focus-visible { @apply outline outline-2 outline-offset-2 outline-gold; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+}
+.grid-pattern { background-image: linear-gradient(rgba(255,255,255,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.07) 1px, transparent 1px); background-size: 36px 36px; }
