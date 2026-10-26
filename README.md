@@ -69,3 +69,4 @@ No tests exist. No CSV tooling yet. Rating "current value" logic not implemented
 ## 10. How to Resume Development
 1. Read this whole README. 2. Inspect the repo and `git status`. 3. Compare code to this file. 4. Verify claimed statuses (run `npm run build`). 5. Continue from the first unfinished task above. 6. Preserve existing work; don't recreate it. 7. Update this README after the next verified milestone. 8. Run relevant tests/builds. 9. Report blockers honestly. If repo and README disagree, the repo wins; fix the README.
 # 1
+# 1
