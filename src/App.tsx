@@ -10,6 +10,7 @@ import GamesPage from './pages/GamesPage';
 import QaPage from './pages/QaPage';
 import RulesView from './components/rules/RulesView';
 import { aMath, crossword, kumkom } from './content/rules';
+import AboutPage from './pages/AboutPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
 import RequireAdmin from './pages/admin/RequireAdmin';
@@ -24,7 +25,7 @@ export default function App() {
   return (<BrowserRouter><Routes>
     <Route element={<MainLayout />}>
       <Route path="/" element={<HomePage />} />
-      <Route path="/about" element={P('เกี่ยวกับสมาคม')} />
+      <Route path="/about" element={<AboutPage />} />
       <Route path="/news" element={<NewsPage />} />
       <Route path="/news/:id" element={<NewsDetailPage />} />
       <Route path="/events" element={<EventsPage />} />

@@ -13,3 +13,4 @@ export const NEWS_CATEGORIES = ['ประกาศทั่วไป', 'ปร�
 /** Date-only strings are shown as-is (UTC) to avoid day shifts; timestamps use the viewer's timezone. Display only; stored values untouched. */
 export const thDate = (s?: string | null) => s ? new Intl.DateTimeFormat('th-TH', { dateStyle: 'long', timeZone: s.length === 10 ? 'UTC' : undefined }).format(new Date(s)) : '';
 export const dateRange = (a: string, b?: string | null) => (b && b !== a ? `${thDate(a)} – ${thDate(b)}` : thDate(a));
+export const thDateShort = (s?: string | null) => s ? new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeZone: s.length === 10 ? 'UTC' : undefined }).format(new Date(s)) : '';

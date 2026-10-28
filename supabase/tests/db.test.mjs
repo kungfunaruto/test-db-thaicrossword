@@ -113,6 +113,34 @@ if (files.length >= 5) {
   await t('faqs: invalid game_type and blank text rejected', () => admin(async () => (await throws(() => rows(Q('draft', "'chess'")))) && (await throws(() => rows(`insert into public.faqs (question,answer) values (' ','y')`)))));
   await t('faqs: admin can update and delete', () => admin(async () => (await rows(`update public.faqs set answer='ใหม่' where status='published' returning id`)).length === 1 && (await rows(`delete from public.faqs where status='archived' returning id`)).length === 1));
 }
+// ---- Pinned cards (news + events)
+if (files.length >= 6) {
+  await admin(async () => { await rows(`update public.news set status='archived' where status='published'`); await rows(`update public.events set publication_status='archived' where publication_status='published'`); });
+  const NP = (slug, day, st = 'published') => `insert into public.news (category,title,slug,content,status,published_at,created_by) values ('ประกาศทั่วไป','ข่าว ${slug}','${slug}','x','${st}','2026-01-${day}T00:00:00Z','${A}') returning id`;
+  await admin(async () => { for (let d = 1; d <= 8; d++) await rows(NP('n' + d, String(d).padStart(2, '0'))); await rows(NP('ndraft', '20', 'draft')); });
+  const HOME = `select slug from public.news where status='published' order by is_pinned desc, pinned_at desc nulls last, published_at desc limit 5`;
+  const slugs = async () => (await anon(() => rows(HOME))).map(r => r.slug);
+  const pin = (slug, v = true) => admin(async () => { await rows(`update public.news set is_pinned=${v} where slug='${slug}' returning id`); await new Promise(r => setTimeout(r, 15)); });
+  await t('pin: defaults to not pinned; no pins -> newest 5 first', async () => (await slugs()).join() === 'n8,n7,n6,n5,n4');
+  await pin('n2'); await pin('n1');
+  await t('pin: pinned first (most recently pinned first), then newest unpinned, 5 total', async () => (await slugs()).join() === 'n1,n2,n8,n7,n6');
+  await pin('ndraft');
+  await t('pin: a pinned draft is never shown publicly', async () => !(await slugs()).includes('ndraft'));
+  for (const s of ['n3', 'n4', 'n5', 'n6', 'n7']) await pin(s);
+  await t('pin: more than 5 pinned -> only the 5 most recently pinned, no duplicates', async () => { const r = await slugs(); return r.join() === 'n7,n6,n5,n4,n3' && new Set(r).size === 5; });
+  await t('pin: pinned_at is set by the database and kept when other fields are edited', () => admin(async () => {
+    const a = (await rows(`select pinned_at from public.news where slug='n3'`))[0].pinned_at; await rows(`update public.news set title='แก้ไขชื่อ' where slug='n3' returning id`);
+    const b = (await rows(`select pinned_at from public.news where slug='n3'`))[0].pinned_at; return a !== null && String(a) === String(b); }));
+  for (const s of ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'ndraft']) await pin(s, false);
+  await t('pin: unpin clears pinned_at and restores newest-first', () => admin(async () => (await rows(`select 1 from public.news where pinned_at is not null`)).length === 0 && (await slugs()).join() === 'n8,n7,n6,n5,n4'));
+  await t('pin: anon and non-admin cannot pin', async () => (await anon(() => blocked(`update public.news set is_pinned=true returning id`))) && (await user(() => blocked(`update public.news set is_pinned=true returning id`))));
+  for (let d = 1; d <= 7; d++) await admin(() => rows(E(`2026-03-0${d}`, 'null', 'null', `v${d}`, 'published')));
+  const EH = `select slug from public.events where publication_status='published' order by is_pinned desc, pinned_at desc nulls last, start_date desc limit 5`;
+  await t('pin events: no pins -> newest start dates first', () => anon(async () => (await rows(EH)).map(r => r.slug).join() === 'v7,v6,v5,v4,v3'));
+  await admin(() => rows(`update public.events set is_pinned=true where slug='v1' returning id`));
+  await t('pin events: pinned first and counts toward the 5-card limit, independent of news', () => anon(async () => { const r = (await rows(EH)).map(x => x.slug); return r.join() === 'v1,v7,v6,v5,v4' && (await rows(HOME)).length === 5; }));
+  await t('pin events: anon cannot read created_by but can read pin columns', () => anon(async () => (await throws(() => rows('select created_by from public.events'))) && (await rows('select is_pinned, pinned_at from public.events limit 1')).length === 1));
+}
 // ---- structure
 await t('RLS enabled on every public table', async () => (await rows(`select relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r' and not c.relrowsecurity`)).length === 0);
 await t('function privileges: save RPC authenticated only; is_admin callable', async () => (await rows(`select has_function_privilege('anon','public.admin_save_athlete(uuid,text,text,text,text[],text,boolean,jsonb,date)','execute') a, has_function_privilege('authenticated','public.admin_save_athlete(uuid,text,text,text,text[],text,boolean,jsonb,date)','execute') b, has_function_privilege('anon','public.is_admin()','execute') c`))[0].a === false);

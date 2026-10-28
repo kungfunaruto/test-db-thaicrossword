@@ -19,6 +19,6 @@ export default function NewsDetailPage() {
     {n.image_url && <img src={n.image_url} alt={n.title} className="mt-6 w-full rounded" />}
     <div className="mt-6 whitespace-pre-line leading-8">{nb(n.content)}</div>
     {n.external_url && <a href={n.external_url} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex items-center gap-2 rounded bg-navy px-5 py-2.5 text-white"><ExternalLink className="h-4 w-4" />เปิดลิงก์ที่เกี่ยวข้อง</a>}
-    {data.related.length > 0 && <section className="mt-12"><h2 className="mb-4 text-xl">ข่าวที่เกี่ยวข้อง</h2><ul className="grid gap-6 sm:grid-cols-3">{data.related.map(r => <NewsCard key={r.id} n={r} />)}</ul></section>}
+    {data.related.length > 0 && <section className="mt-12"><h2 className="mb-4 text-xl">ข่าวที่เกี่ยวข้อง</h2><ul className="grid gap-2.5 sm:grid-cols-3 sm:gap-6">{data.related.map(r => <NewsCard key={r.id} n={r} />)}</ul></section>}
   </article>);
 }

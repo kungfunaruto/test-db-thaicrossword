@@ -6,6 +6,8 @@ import { RULE_GAMES } from '../../content/rules';
 import { usePageMeta } from '../../hooks/usePublic';
 import { nb } from '../../utils/labels';
 import PageHeader from '../common/PageHeader';
+import ToolBlock from './ToolBlocks';
+import FormatsBlock from './FormatsBlock';
 
 const ICONS: Record<string, LucideIcon> = { users: Users, grid: LayoutGrid, tiles: Layers, clock: Clock, hand: Hand, star: Star };
 
@@ -25,6 +27,9 @@ function BlockView({ b, accent }: { b: Block; accent: string }) {
       <ul className="mt-4 space-y-3 sm:hidden">{b.rows.map((r, i) => (<li key={i} className="rounded-lg border border-slate-200 bg-gray-light p-4">
         <p className="font-semibold text-navy-dark">{nb(r[0])}</p>
         <dl className="mt-2 space-y-2 text-sm">{r.slice(1).map((c, j) => <div key={j}><dt className="text-xs font-medium text-muted">{nb(b.head[j + 1])}</dt><dd className="whitespace-pre-line">{nb(c)}</dd></div>)}</dl></li>))}</ul></>);
+    case 'tool': return <ToolBlock tool={b.tool} accent={accent} />;
+    case 'formats': return <FormatsBlock items={b.items} accent={accent} />;
+    case 'links': return <ul className="mt-3 space-y-1 text-sm">{b.items.map((l, n) => <li key={n}><a href={l.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-navy underline">{l.label}<ExternalLink className="h-3.5 w-3.5" /></a></li>)}</ul>;
     case 'note': { const w = b.tone === 'warn'; const Icon = w ? TriangleAlert : Info;
       return <div className={`mt-4 flex gap-3 rounded-lg border p-4 text-sm ${w ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-blue-100 bg-blue-light text-navy-dark'}`}><Icon className="mt-0.5 h-5 w-5 shrink-0" /><p>{nb(b.text)}</p></div>; }
   }

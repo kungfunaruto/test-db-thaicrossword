@@ -9,6 +9,7 @@ export interface Resource {
   table: string; title: string; noun: string; note?: string; fields: Field[]; columns: string[];
   searchFields: string[]; filterFields: string[]; orderBy: string; slugPrefix?: string;
   defaults: Record<string, string>;
+  pinnable?: { statusField: string };
   validate?: (v: Record<string, string>) => Record<string, string>;
   beforeSave?: (p: Record<string, unknown>) => Record<string, unknown>;
 }
@@ -20,7 +21,7 @@ const NEWS_CATS = ['ประกาศทั่วไป', 'ประกาศ�
 export const newsResource: Resource = {
   table: 'news', title: 'จัดการข่าวประชาสัมพันธ์', noun: 'ข่าว', slugPrefix: 'news', orderBy: 'created_at',
   columns: ['title', 'category', 'status', 'published_at'], searchFields: ['title'], filterFields: ['category', 'status'],
-  defaults: { category: NEWS_CATS[0].value, status: 'draft' },
+  defaults: { category: NEWS_CATS[0].value, status: 'draft', is_pinned: 'false' }, pinnable: { statusField: 'status' },
   fields: [
     { name: 'image_url', label: 'รูปภาพ', type: 'image', bucket: 'news-images' },
     { name: 'category', label: 'หมวดหมู่', type: 'select', options: NEWS_CATS, required: true },
@@ -30,6 +31,7 @@ export const newsResource: Resource = {
     { name: 'content', label: 'เนื้อหาข่าว (ข้อความธรรมดา)', type: 'textarea', required: true },
     { name: 'external_url', label: 'ลิงก์ภายนอก', type: 'url' },
     { name: 'published_at', label: 'วันที่เผยแพร่', type: 'date', hint: 'เว้นว่างเพื่อใช้วันที่เผยแพร่จริง' },
+    { name: 'is_pinned', label: 'ปักหมุดไว้ที่หน้าแรก', type: 'boolean', hint: 'รายการที่ปักหมุดจะแสดงก่อน (แสดงสูงสุด 5 รายการรวมที่ปักหมุด)' },
     { name: 'status', label: 'สถานะ', type: 'select', options: PUB, required: true },
   ],
 };
@@ -37,7 +39,7 @@ export const eventsResource: Resource = {
   table: 'events', title: 'จัดการการแข่งขันและกิจกรรม', noun: 'กิจกรรม', slugPrefix: 'event', orderBy: 'start_date',
   columns: ['title', 'game_type', 'start_date', 'competition_status', 'publication_status'], searchFields: ['title'],
   filterFields: ['competition_status', 'publication_status', 'game_type'],
-  defaults: { category: 'tournament', game_type: 'crossword', competition_status: 'upcoming', publication_status: 'draft' },
+  defaults: { category: 'tournament', game_type: 'crossword', competition_status: 'upcoming', publication_status: 'draft', is_pinned: 'false' }, pinnable: { statusField: 'publication_status' },
   validate: (v): Record<string, string> => (v.start_date && v.end_date && v.end_date < v.start_date ? { end_date: 'วันสิ้นสุดต้องไม่ก่อนวันเริ่มต้น' } : {}),
   fields: [
     { name: 'image_url', label: 'ภาพปก', type: 'image', bucket: 'event-images' },

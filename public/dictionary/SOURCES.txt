@@ -1,0 +1,12 @@
+Dictionary data used by the website word checkers
+=================================================
+
+enable1.txt  (English reference word list, 172,823 lines)
+  ENABLE = "Enhanced North American Benchmark LExicon", maintained by M. Cooper and contributors.
+  Its README states that the master word list (WORD.LST) is released into the public domain and asks users to credit the source.
+  It is NOT Collins Official SCRABBLE Words (2024) and NOT TWL; it is an alternative reference list. It is used for quick,
+  unofficial look-ups only. Collins word lists are copyrighted and are deliberately not included in this website.
+
+kumkom-words.txt  (Kumkom / Thaismith word list, 37,627 lines, UTF-8)
+  Supplied by the association (file "words.txt"). Same list that is embedded in the Windows "Thai Word Challenge" program
+  (tools/kumkom-challenge/database/words.txt). One word per line. Matching on the website is exact (after Unicode NFC normalisation).

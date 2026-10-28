@@ -19,6 +19,6 @@ export default function EventsPage() {
         {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
       <select aria-label="เรียงลำดับ" value={oldest ? 'old' : 'new'} onChange={e => { setOldest(e.target.value === 'old'); setPage(1); }} className={f}><option value="new">ใหม่สุดก่อน</option><option value="old">เก่าสุดก่อน</option></select></div>
     {error ? <ErrorState /> : !data ? <LoadingState /> : data.rows.length === 0 ? <EmptyState text="ยังไม่มีรายการแข่งขันหรือกิจกรรม" /> :
-      <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{data.rows.map(e => <EventCard key={e.id} e={e} />)}</ul>}
+      <ul className="grid gap-2.5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">{data.rows.map(e => <EventCard key={e.id} e={e} />)}</ul>}
     {data && <Pagination page={page} total={data.total} size={EVENTS_PAGE} onChange={setPage} />}</div></>);
 }

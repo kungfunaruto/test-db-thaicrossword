@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Pencil, Pin, PinOff, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import type { Field, Option, Resource } from '../../config/adminResources';
 import { useToast } from '../../components/common/Toast';
@@ -106,6 +106,13 @@ export default function ResourceManager({ resource: r }: { resource: Resource })
     if (error || !data?.length) { toast('err', `ลบไม่สำเร็จ${error ? `: ${error.message}` : ': ไม่มีสิทธิ์หรือไม่พบข้อมูล'}`); return; }
     toast('ok', `ลบ${r.noun}เรียบร้อยแล้ว`); setToDelete(null); load();
   }
+  async function togglePin(row: Row) {
+    const next = !row.is_pinned;
+    const { data, error } = await supabase.from(r.table).update({ is_pinned: next }).eq('id', String(row.id)).select('id');
+    if (error || !data?.length) { toast('err', 'เปลี่ยนสถานะปักหมุดไม่สำเร็จ'); return; }
+    toast('ok', next ? 'ปักหมุดเรียบร้อยแล้ว' : 'ยกเลิกการปักหมุดแล้ว'); load();
+  }
+  const pinnedLive = r.pinnable ? (rows ?? []).filter(x => x.is_pinned && x[r.pinnable!.statusField] === 'published').length : 0;
   async function upload(f: Field, file: File) {
     if (!IMG_TYPES.includes(file.type)) { toast('err', 'รองรับเฉพาะไฟล์ JPEG, PNG และ WebP'); return; }
     if (file.size > MAX_BYTES) { toast('err', 'ไฟล์ต้องมีขนาดไม่เกิน 5 MB'); return; }
@@ -157,6 +164,7 @@ export default function ResourceManager({ resource: r }: { resource: Resource })
     <div className="flex items-center justify-between gap-2"><h1 className="text-2xl">{r.title}</h1>
       <button onClick={openNew} className="flex items-center gap-1 rounded bg-navy px-4 py-2 text-white"><Plus className="h-4 w-4" />เพิ่ม{r.noun}</button></div>
     {r.note && <p className="rounded bg-blue-light p-3 text-sm">{r.note}</p>}
+    {r.pinnable && <p className={`rounded p-3 text-sm ${pinnedLive > 5 ? 'bg-amber-100 text-amber-900' : 'bg-blue-light'}`}>หน้าแรกแสดงสูงสุด 5 รายการ รวมรายการที่ปักหมุด · ปักหมุดที่เผยแพร่แล้ว {pinnedLive} รายการ{pinnedLive > 5 ? ' (เกิน 5 รายการ: หน้าแรกจะแสดงเฉพาะ 5 รายการที่ปักหมุดล่าสุด)' : ''}</p>}
     <div className="flex flex-wrap gap-2">
       <input aria-label="ค้นหา" placeholder="ค้นหา..." value={q} onChange={e => setQ(e.target.value)} className="rounded border border-slate-300 p-2" />
       {r.filterFields.map(n => { const f = r.fields.find(x => x.name === n)!; return (
@@ -166,9 +174,10 @@ export default function ResourceManager({ resource: r }: { resource: Resource })
     {failed ? <ErrorState /> : rows === null ? <LoadingState /> : visible.length === 0 ? <EmptyState text={`ไม่พบ${r.noun}`} /> :
       <div className="overflow-x-auto rounded border border-slate-200 bg-white"><table className="w-full text-left text-sm">
         <thead className="bg-blue-light"><tr>{r.columns.map(n => <th key={n} className="whitespace-nowrap p-3">{r.fields.find(f => f.name === n)?.label}</th>)}<th className="p-3"><span className="sr-only">จัดการ</span></th></tr></thead>
-        <tbody>{visible.map(row => <tr key={String(row.id)} className="border-t border-slate-100">
-          {r.columns.map(n => <td key={n} className="p-3">{show(n, row[n])}</td>)}
+        <tbody>{visible.map(row => <tr key={String(row.id)} className={`border-t border-slate-100 ${row.is_pinned ? 'bg-amber-50' : ''}`}>
+          {r.columns.map((n, i) => <td key={n} className="p-3">{i === 0 && !!row.is_pinned && <span className="mr-2 inline-flex items-center gap-1 whitespace-nowrap rounded bg-gold/30 px-1.5 py-0.5 text-xs font-medium text-navy-dark"><Pin className="h-3 w-3" />ปักหมุด</span>}{show(n, row[n])}</td>)}
           <td className="whitespace-nowrap p-3 text-right">
+            {r.pinnable && <button aria-label={row.is_pinned ? 'ยกเลิกปักหมุด' : 'ปักหมุด'} title={row.is_pinned ? 'ยกเลิกปักหมุด' : 'ปักหมุด'} onClick={() => togglePin(row)} className={`p-2 ${row.is_pinned ? 'text-gold' : ''}`}>{row.is_pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}</button>}
             <button aria-label="แก้ไข" onClick={() => openEdit(row)} className="p-2"><Pencil className="h-4 w-4" /></button>
             <button aria-label="ลบ" onClick={() => setToDelete(row)} className="p-2 text-red-700"><Trash2 className="h-4 w-4" /></button></td></tr>)}</tbody></table></div>}
     {rows && rows.length >= 500 && <p className="text-sm text-muted">แสดงสูงสุด 500 รายการล่าสุด</p>}

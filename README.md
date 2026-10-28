@@ -30,26 +30,32 @@ Database: run the migration in the Supabase SQL editor (or `supabase db push`). 
 - Storage: buckets `news-images`, `event-images`, `athlete-images` (public read, admin write, 5 MB, JPEG/PNG/WebP).
 
 ## 5. Routes
-Public: `/`, `/news`, `/news/:id`, `/events`, `/events/:id`, `/rankings` (`?game=crossword|a_math`), `/games`, `/games/crossword`, `/games/a-math`, `/games/kumkom`, `/qa`; placeholder: `/about`. Admin (guarded): `/admin/login`, `/admin`, `/admin/news`, `/admin/events`, `/admin/rankings`, `/admin/qa`.
+Public: `/`, `/about`, `/news`, `/news/:id`, `/events`, `/events/:id`, `/rankings` (`?game=crossword|a_math`), `/games`, `/games/crossword`, `/games/a-math`, `/games/kumkom`, `/qa`.
+Admin (guarded): `/admin/login`, `/admin`, `/admin/news`, `/admin/events`, `/admin/rankings`, `/admin/qa`. All 13 routes were smoke-tested at desktop and mobile widths (no JS errors, no horizontal overflow; `/admin` redirects to login when logged out).
 
 ## 6. Status
-- [x] `npm run build` (tsc + vite) passes; layout checked in a headless browser at 1280px and 390px (without database data)
-- Migrations, run IN ORDER: `20261023000001_initial_schema.sql`, `20261024000001_fix_triggers_and_rankings.sql`, `20261025000001_athlete_games_and_labels.sql`, `20261026000001_ranked_games_and_hardening.sql`
-- [x] **Database audit**: `npm run test:db` runs all migrations on a real Postgres (PGlite) with Supabase-style roles (anon / authenticated / admin / inactive admin) and checks RLS, grants, triggers, constraints, the ranking view and the save RPC. Latest run: 54 passed, 0 failed. It is a local emulation, so it does NOT replace testing on the real Supabase project (storage upload policies and PostgREST behaviour are not covered).
-- Ranked games: only Crossword and A-Math have ratings (`game_types.has_rating`, enforced by triggers and the RPC). Sudoku and Kumkom stay valid for events only. To enable another game later, set its `has_rating = true` and add it to `RANKED_GAMES` in `src/utils/labels.ts`.
-- Hardening in migration 4: removed unused `athletes.admin_notes`; public (anon) API can read only an allow-list of columns on news, events, rating history (no `created_by`, notes, source); `hall_of_fame` is no longer publicly readable; ratings of inactive athletes are not public.
-- Spelling: A-Math is written เอแม็ท, Kumkom is คำคม (labels in code and `game_types`).
-- Line breaks: เอแม็ท and ซูโดกุ never split across lines (`nb()` in `src/utils/labels.ts` inserts invisible word joiners between syllables; applied to labels, page titles, and news/event text). Copy-pasted text may contain these invisible characters.
-- Mobile (<1024px): no white top bar; a navy bar with logo + hamburger. The 4 quick-link cards on Home are hidden below 640px.
-- [/] Admin rankings: athlete form with games (multi-select) and a rating per game; edit name/school/province/games/ratings; history with hide/publish. Saving uses the atomic RPC `admin_save_athlete` (admin-checked in SQL). **Not yet tested against Supabase.**
-- Rating rule (provisional, needs association confirmation): current rating = published record with latest effective_date, then latest created_at (`current_ratings` view). Equal ratings share a rank. Un-selecting a game removes the athlete from that game's ranking; the history is kept.
-- Athlete code and display name are no longer in the form (columns remain in the database).
-- Thai typography: `tailwind.config.js` sets taller line-heights; for headings/hero copy use `src/components/common/Th.tsx` to control where lines may break.
-- [/] Public pages (Home, News, Events, Rankings) restyled; About and Games/Rules are placeholders awaiting verified content
-- [x] **Rules pages** (`/games`, `/games/{crossword,a-math,kumkom}`): content lives in `src/content/rules/*.ts` (separate from UI, rendered by `src/components/rules/RulesView.tsx`); full PDFs in `public/rules/` are shown at the bottom of each page (download, open, desktop preview). Content is a summary of the Bangkok Crossword Club PDFs (Crossword = Wordsmith Ver.16/6/2026, A-Math = Mathsmith Ver.4/2025, Kumkom = Thaismith Ver.1/6/2026). To change a rule, edit the matching file; to replace a PDF, overwrite the file in `public/rules/` and update `version` in the content file.
-- [x] **Q&A**: public `/qa` (accordion, search, game filter) and admin `/admin/qa` (add/edit/delete, order, publish). Migration `20261027000001_faqs.sql`. Database tests: 62 passed.
-- [?] Needs confirmation by the association: (1) A-Math yellow/red "Equation" squares are shown as multiplying the WHOLE equation (the PDF's equipment list words them like piece squares, but its blank-tile rule says whole equation); (2) Kumkom = "Thaismith" PDF; (3) the Crossword PDF file name says "3_2025" but its cover says Ver.16/6/2026 (cover version is shown); (4) the PDF end-game worked examples are not reproduced (numbers unreadable in text extraction); the page points to the PDF.
-- [ ] Rich text editor; upload progress; CSV import/export; duplicate-athlete resolution; athlete public profile; ranking categories; RLS tests; automated tests
+**Migrations, run IN ORDER:** `20261023000001_initial_schema` → `20261024000001_fix_triggers_and_rankings` → `20261025000001_athlete_games_and_labels` → `20261026000001_ranked_games_and_hardening` → `20261027000001_faqs` → `20261028000001_pinned_cards`.
+**Database tests:** `npm run test:db` runs every migration on a real Postgres (PGlite) with Supabase-style roles and checks RLS, grants, triggers, ranking views, the save RPC, FAQs and pinning. Latest run: 72 passed, 0 failed. This is a local emulation and does NOT replace testing on the real Supabase project.
+
+### Done in this session (built and browser-tested; NOT tested against a real Supabase project)
+- **Official logo**: `public/logo/tca-logo.jpg` is the supplied file, byte-for-byte unmodified (637x535). CSS sets only `height`, `width:auto`, so the ratio is preserved (measured 1.19 = original). Used in the desktop header, the mobile bar (inside a white pill because the JPEG has a white background), the footer, the About hero and the favicon. `src/config/site.ts` now uses the name printed on the logo: "สมาคมครอสเวิร์ดเกม เอแม็ท คำคม และซูโดกุ แห่งประเทศไทย" / "Thailand Crossword Game A-Math Kumkom and Sudoku Association" (previously "ครอสเวิร์ด" without "เกม").
+- **About page** (`src/pages/AboutPage.tsx`, content in `src/content/about.ts`): written only from verifiable sources (press releases 2010-2026, the association's rules PDFs, the logo); each timeline item links to its source. Unverified items (founding year, mission/vision, current officers, contact details, statistics) are shown as "pending confirmation", not as facts. The Facebook page could not be read automatically (robots disallowed): nothing is taken from it, it is only linked.
+- **Crossword Challenge**: link to the official Collins tools page. **Word checker** uses ENABLE (public-domain list, 172,823 words) because Collins word lists are copyrighted and cannot be embedded; results are labelled as an unofficial reference ("QI" is not in ENABLE but is valid in Collins) and a link to Collins' CHECK page is provided. No scraping, no API. Credits: `public/dictionary/SOURCES.txt`.
+- **Kumkom Challenge + checker**: the web checker uses the supplied `words.txt` (37,627 lines; 37,626 after Unicode NFC de-duplication), exact match. Windows program kit: `tools/kumkom-challenge/` (original `RBD2026.py` unchanged, `database/words.txt`, `build_windows.bat`, `.github/workflows/build-kumkom-challenge.yml`, README). Tested: the program loads 37,627 words and answers pass/fail correctly under tkinter (headless Linux); a PyInstaller build on Linux bundles `database/words.txt` and starts. **The Windows `.exe` has NOT been built or tested** (PyInstaller cannot cross-compile); until then the site shows an "in preparation" notice. To publish: build on Windows (or run the GitHub Action), copy to `public/downloads/ThaiWordChallenge.exe`, set `kumkomExe.available = true` in `src/content/rules/tools.ts`.
+- **Competition formats**: all 16 formats (Green and Guelph are two related systems, shown together as in the requested list) on all three rules pages after "End game", each with how it works / pairing / example / when to use. Definitions follow John J. Chew III's tsh documentation (linked on the page); examples are illustrative. Content: `src/content/rules/formats.ts`.
+- **Pinned cards**: `is_pinned` + database-managed `pinned_at` on `news` and `events` (migration 6). Admin: pin/unpin button, gold badge and row highlight, a form checkbox, and a warning when more than 5 live items are pinned. Home: one query per section (`order is_pinned desc, pinned_at desc, newest`, `limit 5`), so no duplicates and pinned items count toward the 5; news and competitions are independent. The Home competitions section now lists published events of any status (newest start date first) instead of upcoming-only, as requested; /news and /events keep their normal sorting.
+- **Cards**: phone = compact horizontal cards (88px thumbnail, title, date, status/pin; whole card tappable); tablet/desktop = original vertical cards in ONE non-wrapping row (256px each) with arrow buttons plus touch/trackpad scrolling. Verified at 1280, 820 and 390 px.
+
+### Open items
+- [?] A-Math yellow/red "Equation" squares are shown as multiplying the whole equation (the PDF equipment list words them like piece squares; its blank-tile rule says whole equation). Confirm with the association.
+- [?] "Kumkom" = the Thaismith PDF; the Crossword PDF file name says 3_2025 but its cover says Ver.16/6/2026.
+- [?] About page pending items (above). The current-rating rule for rankings is still provisional.
+- [ ] Rich text editor, upload progress bar, CSV import/export, duplicate-athlete resolution, ranking categories, athlete profile page, Sudoku rules page.
+
+### Test files review
+- Removed (disposable, regenerable): `dist/`, `tools/kumkom-challenge/__pycache__`, the scratch copy of the DB test harness and the PyInstaller trial build outside the project, one-off browser scripts/screenshots in /tmp.
+- Kept on purpose: `supabase/tests/db.test.mjs`, the `test:db` script and the `@electric-sql/pglite` dev dependency. Nothing in `src/` imports them and they are not in the production bundle, but they are the only automated check of the security policies. To remove them anyway: delete `supabase/tests/`, the `test:db` script and the `@electric-sql/pglite` devDependency; the app is unaffected.
+- Not test files despite their names: `supabase/seed.sql` (documents first-admin creation), `public/dictionary/*` (production data for the word checkers).
 
 ## 7. Blockers / decisions
 - [!] Supabase project URL + anon key (needed to test anything against a database)
@@ -59,14 +65,13 @@ Public: `/`, `/news`, `/news/:id`, `/events`, `/events/:id`, `/rankings` (`?game
 - [?] Whether Hall of Fame should show linked event title live or the snapshot `event_name` (trigger currently snapshots on insert)
 
 ## 8. Known limitations
-No tests exist. No CSV tooling yet. Rating "current value" logic not implemented. Bundle not code-split.
+No tests against a real Supabase project; no Windows `.exe` built; the word checkers match exactly (Thai tone-mark/vowel order matters) and the English list is not the official Collins list; browser checks ran in headless Chromium only.
 
 ## 9. Next tasks (in order)
-1. Run migration `20261027000001_faqs.sql`; add a few Q&A in `/admin/qa` and check `/qa`.
-2. Have the association proofread the 3 rules pages against the PDFs (see [?] items above).
-3. About page content; CSV import/export; rating rule confirmation; RLS tests on the real Supabase project.
+1. Run migrations 5 and 6 on Supabase; test pinning in `/admin/news` and `/admin/events`, then check the Home page.
+2. Build `ThaiWordChallenge.exe` on Windows (or via GitHub Actions), test it, publish it (see `tools/kumkom-challenge/README.md`).
+3. Get the About-page pending items and the [?] items confirmed by the association.
+4. CSV import/export, rating-rule confirmation, RLS checks on the real project.
 
 ## 10. How to Resume Development
 1. Read this whole README. 2. Inspect the repo and `git status`. 3. Compare code to this file. 4. Verify claimed statuses (run `npm run build`). 5. Continue from the first unfinished task above. 6. Preserve existing work; don't recreate it. 7. Update this README after the next verified milestone. 8. Run relevant tests/builds. 9. Report blockers honestly. If repo and README disagree, the repo wins; fix the README.
-# 1
-# 1

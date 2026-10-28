@@ -3,7 +3,11 @@ export type Block =
   | { t: 'ul'; items: string[] } | { t: 'ol'; items: string[] }
   | { t: 'cards'; items: { title: string; text: string; color?: string }[] }
   | { t: 'table'; head: string[]; rows: string[][] }
-  | { t: 'note'; tone: 'info' | 'warn'; text: string };
+  | { t: 'note'; tone: 'info' | 'warn'; text: string }
+  | { t: 'tool'; tool: 'crossword-challenge' | 'kumkom-challenge' | 'checker-en' | 'checker-th' }
+  | { t: 'formats'; items: FormatItem[] }
+  | { t: 'links'; items: { label: string; url: string }[] };
+export interface FormatItem { name: string; alias?: string; summary: string; how: string; pairing: string; example: string; useWhen?: string }
 export interface RuleSection { id: string; title: string; blocks: Block[] }
 export interface Fact { icon: 'users' | 'grid' | 'tiles' | 'clock' | 'hand' | 'star'; label: string; value: string; sub?: string }
 export interface RuleGame {

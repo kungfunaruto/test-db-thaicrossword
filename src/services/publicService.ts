@@ -1,8 +1,8 @@
 import { supabase } from './supabase';
 import type { EventRow, FaqRow, NewsRow, RankingRow } from '../types/db';
 
-const NEWS_COLS = 'id,image_url,category,title,slug,excerpt,content,external_url,status,published_at,created_at,updated_at';
-const EVENT_COLS = 'id,image_url,title,slug,category,game_type,start_date,end_date,venue,description,result_url,teacher_certificate_url,student_certificate_url,competition_status,publication_status,published_at,created_at,updated_at';
+const NEWS_COLS = 'id,image_url,category,title,slug,excerpt,content,external_url,status,published_at,is_pinned,pinned_at,created_at,updated_at';
+const EVENT_COLS = 'id,image_url,title,slug,category,game_type,start_date,end_date,venue,description,result_url,teacher_certificate_url,student_certificate_url,competition_status,publication_status,published_at,is_pinned,pinned_at,created_at,updated_at';
 export const NEWS_PAGE = 9; export const EVENTS_PAGE = 9; export const RANK_PAGE = 20;
 const like = (q: string) => `%${q.trim().replace(/[\\%_]/g, m => `\\${m}`)}%`;
 const span = (page: number, size: number) => [(page - 1) * size, page * size - 1] as const;
@@ -18,7 +18,14 @@ export async function fetchNews(o: { q: string; category: string; oldest: boolea
   if (error) throw error;
   return { rows: (data ?? []) as unknown as NewsRow[], total: count ?? 0 };
 }
-export async function fetchLatestNews(limit = 6) { return (await fetchNews({ q: '', category: '', oldest: false, page: 1 })).rows.slice(0, limit); }
+export const HOME_LIMIT = 5;
+/** Home page: ONE query so pinned rows can never be duplicated. Pinned first (most recently pinned first), then newest; pinned rows count toward the limit. */
+export async function fetchHomeNews(limit = HOME_LIMIT) {
+  const { data, error } = await supabase.from('news').select(NEWS_COLS).eq('status', 'published')
+    .order('is_pinned', { ascending: false }).order('pinned_at', { ascending: false, nullsFirst: false }).order('published_at', { ascending: false }).limit(limit);
+  if (error) throw error;
+  return (data ?? []) as unknown as NewsRow[];
+}
 export async function fetchNewsById(id: string) {
   const { data, error } = await supabase.from('news').select(NEWS_COLS).eq('id', id).eq('status', 'published').maybeSingle();
   if (error) { if (notFound(error)) return null; throw error; }
@@ -38,9 +45,9 @@ export async function fetchEvents(o: { q: string; status: string; oldest: boolea
   if (error) throw error;
   return { rows: (data ?? []) as unknown as EventRow[], total: count ?? 0 };
 }
-export async function fetchUpcomingEvents(limit = 3) {
+export async function fetchHomeEvents(limit = HOME_LIMIT) {
   const { data, error } = await supabase.from('events').select(EVENT_COLS).eq('publication_status', 'published')
-    .in('competition_status', ['upcoming', 'registration_open']).order('start_date', { ascending: true }).limit(limit);
+    .order('is_pinned', { ascending: false }).order('pinned_at', { ascending: false, nullsFirst: false }).order('start_date', { ascending: false }).limit(limit);
   if (error) throw error;
   return (data ?? []) as unknown as EventRow[];
 }

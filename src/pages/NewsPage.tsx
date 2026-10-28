@@ -18,6 +18,6 @@ export default function NewsPage() {
       <select aria-label="หมวดหมู่" value={cat} onChange={e => { setCat(e.target.value); setPage(1); }} className={f}><option value="">ทุกหมวดหมู่</option>{NEWS_CATEGORIES.map(c => <option key={c}>{c}</option>)}</select>
       <select aria-label="เรียงลำดับ" value={oldest ? 'old' : 'new'} onChange={e => { setOldest(e.target.value === 'old'); setPage(1); }} className={f}><option value="new">ใหม่สุดก่อน</option><option value="old">เก่าสุดก่อน</option></select></div>
     {error ? <ErrorState /> : !data ? <LoadingState /> : data.rows.length === 0 ? <EmptyState text="ยังไม่มีข่าวประชาสัมพันธ์" /> :
-      <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{data.rows.map(n => <NewsCard key={n.id} n={n} />)}</ul>}
+      <ul className="grid gap-2.5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">{data.rows.map(n => <NewsCard key={n.id} n={n} />)}</ul>}
     {data && <Pagination page={page} total={data.total} size={NEWS_PAGE} onChange={setPage} />}</div></>);
 }
