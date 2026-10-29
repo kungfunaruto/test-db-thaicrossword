@@ -12,7 +12,7 @@ import { LoadingState } from '../common/States';
 /** Transparent emblem (background removed). Only the height is set; width follows the image's aspect ratio. */
 export function Logo({ className }: { className: string }) {
   const { t } = useLang();
-  return <img src="/logo/tca-logo-256.webp" alt={t.site.logoAlt} width={301} height={256} className={`${className} w-auto max-w-full shrink-0 object-contain drop-shadow-sm`} />;
+  return <img src="/logo/tca-logo-256.webp" alt={t.site.logoAlt} width={315} height={256} className={`${className} w-auto max-w-full shrink-0 object-contain drop-shadow-sm`} />;
 }
 
 const NAV = ['/', '/about', '/news', '/games', '/events', '/rankings', '/qa'] as const;

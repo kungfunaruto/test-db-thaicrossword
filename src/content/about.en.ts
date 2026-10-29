@@ -2,7 +2,7 @@
 import { timeline as thTimeline, type Milestone } from './about';
 const tl = (i: number, title: string, text: string): Milestone => ({ ...thTimeline[i], title, text });
 export const sources = [
-  { id: 'logo', label: 'Official emblem of the association (file supplied by the association)', url: '/logo/tca-logo.jpg' },
+  { id: 'logo', label: 'Official emblem of the association (file supplied by the association)', url: '/logo/tca-logo-original.webp' },
   { id: 'rules', label: 'Standard tournament rules (Bangkok Crossword Club): PDF documents on this website', url: '/games' },
   { id: 'gamesmith', label: 'The Thai Press (2026): B.Grimm Gamesmith, competing for the Royal Trophy', url: 'https://www.thethaipress.com/2026/166901' },
   { id: 'ryt9-2011', label: 'RYT9 (2011): Cyberdict Crossword Game Northern Championship', url: 'https://www.ryt9.com/s/prg/1060469' },
