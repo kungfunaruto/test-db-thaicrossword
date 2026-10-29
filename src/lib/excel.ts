@@ -50,19 +50,18 @@ export async function readSheets(file: File): Promise<Sheet[]> {
   return sheets;
 }
 
-export interface Columns { header: number; name: number | null; rating: number | null; nameEn: number | null }
+export interface Columns { header: number; name: number | null; rating: number | null }
 const isNum = (v: CellValue) => typeof v === 'number' || (typeof v === 'string' && /^\s*-?[\d,]+(\.\d+)?\s*$/.test(v));
 const isText = (v: CellValue) => typeof v === 'string' && /[A-Za-z฀-๿]/.test(v) && !isNum(v);
-/** Guesses which row is the header and which columns hold the name, the rating and (optionally) the English name. */
+/** Guesses which row is the header and which columns hold the name and the rating. */
 export function guessColumns(grid: CellValue[][]): Columns {
   const width = Math.max(0, ...grid.map(r => r.length));
   for (let h = 0; h < Math.min(10, grid.length); h++) {
     const cells = (grid[h] ?? []).map(c => String(c ?? '').toLowerCase());
     const find = (re: RegExp, not?: RegExp) => { const i = cells.findIndex(c => re.test(c) && !(not && not.test(c))); return i < 0 ? null : i; };
     const rating = find(/เรต|เรท|rating|elo|คะแนน/);
-    const nameEn = find(/อังกฤษ|english|\(en\)|name.?en/);
     const name = find(/ชื่อ|name|รายชื่อ|นักกีฬา|player/, /อังกฤษ|english|\(en\)|name.?en/);
-    if (name !== null && rating !== null) return { header: h, name, rating, nameEn };
+    if (name !== null && rating !== null) return { header: h, name, rating };
   }
   // No recognisable header: first mostly-text column = names, first mostly-number column (not a small rank) = ratings.
   const data = grid.slice(0, 50);
@@ -74,7 +73,7 @@ export function guessColumns(grid: CellValue[][]): Columns {
   }
   const header = data.findIndex(r => r.some(c => c !== null)) ;
   const headerLooksLikeData = header >= 0 && name !== null && isText(data[header][name] ?? null) && rating !== null && isNum(data[header][rating] ?? null);
-  return { header: headerLooksLikeData ? -1 : header, name, rating, nameEn: null };
+  return { header: headerLooksLikeData ? -1 : header, name, rating };
 }
 export const colLetter = (i: number) => { let s = ''; i += 1; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
 export function toNumber(v: CellValue): number | null | 'invalid' {
@@ -85,11 +84,11 @@ export function toNumber(v: CellValue): number | null | 'invalid' {
   const n = Number(s); return Number.isFinite(n) ? n : 'invalid';
 }
 
-/** Small sample file: the three columns the import understands. */
+/** Small sample file: the two columns the import needs (names may be Thai or English). */
 export async function downloadSample() {
   const ExcelJS = await load();
   const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('เรตติ้ง', { views: [{ state: 'frozen', ySplit: 1 }] });
-  ws.columns = [{ header: 'รายชื่อ', key: 'n', width: 34 }, { header: 'เรตติ้ง', key: 'r', width: 14 }, { header: 'ชื่อภาษาอังกฤษ (ไม่บังคับ)', key: 'e', width: 34 }];
+  ws.columns = [{ header: 'รายชื่อ', key: 'n', width: 34 }, { header: 'เรตติ้ง', key: 'r', width: 14 }];
   ws.getRow(1).eachCell(c => { c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F2A47' } }; });
   for (let r = 2; r <= 1000; r++) ws.getCell(r, 2).dataValidation = { type: 'decimal', operator: 'greaterThanOrEqual', formulae: [0], allowBlank: true, showErrorMessage: true, error: 'กรุณาใส่ตัวเลข' };
   const buf = await wb.xlsx.writeBuffer();

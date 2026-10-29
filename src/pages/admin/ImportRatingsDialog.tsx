@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, FileSpreadsheet, 
 import { supabase } from '../../services/supabase';
 import { invalidate } from '../../lib/query';
 import { colLetter, downloadSample, guessColumns, readSheets, toNumber, type Columns, type Sheet } from '../../lib/excel';
-import { buildIndex, hasThai, nameKey, tidy } from '../../lib/nameMatch';
+import { buildIndex, hasThai, nameKey, tidy, type Via } from '../../lib/nameMatch';
 import { fmtDate, fmtDateTime } from '../../lib/dates';
 import { th } from '../../i18n/th';
 import { useToast } from '../../components/common/Toast';
@@ -14,8 +14,10 @@ import { Drawer, Field, Pills } from './ui';
 export interface ImportAthlete { id: string; full_name: string; full_name_en: string | null; games: string[]; publication_status: 'published' | 'archived' }
 type Game = 'crossword' | 'a_math';
 type Kind = 'change' | 'same' | 'new' | 'review' | 'error';
-interface Candidate { person: ImportAthlete; score: number }
-interface RowPlan { row: number; name: string; nameEn: string; rating: number; kind: Kind; match?: ImportAthlete; candidates?: Candidate[]; error?: string }
+interface Candidate { person: ImportAthlete; score: number; via: Via; swapped?: boolean }
+interface RowPlan { row: number; name: string; rating: number; kind: Kind; match?: ImportAthlete; via?: Via; candidates?: Candidate[]; error?: string }
+const VIA: Record<Via, string> = { th: 'ตรงกับชื่อไทย', en: 'ตรงกับชื่ออังกฤษ' };
+const NEAR: Record<Via, string> = { th: 'คล้ายชื่อไทย', en: 'คล้ายชื่ออังกฤษ' };
 interface ImportLog { id: string; game_type: string; file_name: string | null; effective_date: string; rows_total: number; ratings_changed: number; athletes_created: number; status: 'applied' | 'reverted'; created_at: string; reverted_at: string | null }
 const fmt = (n: number | undefined | null) => (n == null ? '—' : Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -27,18 +29,19 @@ function analyse(sheet: Sheet, cols: Columns, athletes: ImportAthlete[]): RowPla
   const find = buildIndex(athletes); const seen = new Map<string, number>(); const out: RowPlan[] = [];
   sheet.grid.forEach((r, i) => {
     if (i <= cols.header) return;
-    const name = cellText(r[cols.name!]); const raw = r[cols.rating!] ?? null; const nameEn = cols.nameEn === null ? '' : cellText(r[cols.nameEn]);
+    const name = cellText(r[cols.name!]); const raw = r[cols.rating!] ?? null;
     const val = toNumber(raw); const row = i + 1;
     if (!name && val === null) return; // empty row
-    const base = { row, name, nameEn, rating: typeof val === 'number' ? val : 0 };
+    const base = { row, name, rating: typeof val === 'number' ? val : 0 };
     const err = !name ? 'ไม่มีชื่อ' : val === null ? 'ไม่มีเรตติ้ง' : val === 'invalid' ? `เรตติ้ง "${raw}" ไม่ใช่ตัวเลข` : val < 0 ? 'เรตติ้งติดลบ' : '';
     if (err) { out.push({ ...base, kind: 'error', error: err }); return; }
     const k = nameKey(name); const dup = seen.get(k);
     if (dup) { out.push({ ...base, kind: 'error', error: `ชื่อซ้ำกับแถว ${dup} ในไฟล์` }); return; }
     seen.set(k, row);
     const m = find(name);
-    if (m.exact.length === 1) { out.push({ ...base, kind: 'change', match: m.exact[0] }); return; }
-    if (m.exact.length > 1) { out.push({ ...base, kind: 'review', candidates: m.exact.map(person => ({ person, score: 1 })) }); return; }
+    // The name is compared with BOTH the Thai and the English name of every athlete.
+    if (m.exact.length === 1) { out.push({ ...base, kind: 'change', match: m.exact[0].person, via: m.exact[0].via }); return; }
+    if (m.exact.length > 1) { out.push({ ...base, kind: 'review', candidates: m.exact.map(x => ({ person: x.person, score: 1, via: x.via })) }); return; }
     if (m.similar.length) { out.push({ ...base, kind: 'review', candidates: m.similar }); return; }
     out.push({ ...base, kind: 'new' });
   });
@@ -114,14 +117,14 @@ export default function ImportRatingsDialog({ athletes, cur, onClose, onChanged 
   const final = useMemo(() => {
     const used = new Map<string, number>();
     return plans.map(p => {
-      let kind: Kind | 'skip' = p.kind; let match = p.match; let conflict = '';
-      if (p.kind === 'review') { const d = decide[p.row]; if (d === 'new') kind = 'new'; else if (d === 'skip') kind = 'skip'; else if (d) { match = p.candidates!.find(c => c.person.id === d)?.person; kind = 'change'; } }
+      let kind: Kind | 'skip' = p.kind; let match = p.match; let via = p.via; let conflict = '';
+      if (p.kind === 'review') { const d = decide[p.row]; if (d === 'new') kind = 'new'; else if (d === 'skip') kind = 'skip'; else if (d) { const c = p.candidates!.find(x => x.person.id === d); match = c?.person; via = c?.via; kind = 'change'; } }
       if (match && (kind === 'change' || kind === 'same')) {
         const prev = used.get(match.id); if (prev) conflict = `แถวนี้กับแถว ${prev} เป็นนักกีฬาคนเดียวกัน (${match.full_name}) กรุณาแก้ไฟล์หรือเลือกใหม่`; else used.set(match.id, p.row);
         const old = game ? cur(match.id, game) : undefined;
         if (!conflict && old !== undefined && old === p.rating) kind = 'same';
       }
-      return { ...p, kind: conflict ? 'error' as const : kind, match, old: match && game ? cur(match.id, game) : undefined, error: conflict || p.error, chosen: p.kind === 'review' && !!decide[p.row] };
+      return { ...p, kind: conflict ? 'error' as const : kind, match, via, old: match && game ? cur(match.id, game) : undefined, error: conflict || p.error, chosen: p.kind === 'review' && !!decide[p.row] };
     });
   }, [plans, decide, game, cur]);
   const by = (k: Kind | 'skip') => final.filter(p => p.kind === k);
@@ -132,7 +135,7 @@ export default function ImportRatingsDialog({ athletes, cur, onClose, onChanged 
     if (!ready || busy || !game) return;
     setBusy('save');
     const payload = [...changes.map(p => ({ row: p.row, athlete_id: p.match!.id, rating: p.rating })),
-      ...news.map(p => ({ row: p.row, athlete_id: null, name: p.name, name_en: (enNames[p.row] ?? (p.nameEn || (hasThai(p.name) ? '' : p.name))).trim() || null, rating: p.rating }))];
+      ...news.map(p => ({ row: p.row, athlete_id: null, name: p.name, name_en: (enNames[p.row] ?? (hasThai(p.name) ? '' : p.name)).trim() || null, rating: p.rating }))];
     const { data, error } = await supabase.rpc('admin_import_ratings', { p_game: game, p_effective_date: date, p_file_name: file?.name ?? null, p_rows: payload });
     setBusy(null);
     if (error) { const m = /ROW (\d+)/.exec(error.message); toast('err', `นำเข้าไม่สำเร็จ ไม่มีข้อมูลใดถูกบันทึก${m ? ` (แถวที่ ${m[1]})` : ''}: ${error.message.replace(/^ROW \d+: /, '')}`); return; }
@@ -169,7 +172,8 @@ export default function ImportRatingsDialog({ athletes, cur, onClose, onChanged 
         <div className="space-y-4">
           <Field label="1. เลือกเกมที่จะนำเข้าเรตติ้ง" required><Pills value={game} onChange={g => setGame(g as Game)} options={[{ value: 'crossword', label: th.games.crossword }, { value: 'a_math', label: th.games.a_math }]} /></Field>
           <Field label="2. วันที่มีผลของเรตติ้ง" required htmlFor="imp-date" hint="เรตติ้งเดิมไม่ถูกลบ ระบบเก็บเป็นประวัติ และย้อนกลับได้"><input id="imp-date" type="date" className="input sm:w-56" value={date} onChange={e => setDate(e.target.value)} /></Field></div>
-        <div className="text-sm md:w-64"><p className="font-medium text-navy-dark">ไฟล์ต้องมี</p><ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted"><li>คอลัมน์ <b>รายชื่อ</b></li><li>คอลัมน์ <b>เรตติ้ง</b></li><li>ชื่อภาษาอังกฤษ (ไม่บังคับ)</li></ul>
+        <div className="text-sm md:w-64"><p className="font-medium text-navy-dark">ไฟล์ต้องมี</p><ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted"><li>คอลัมน์ <b>รายชื่อ</b> (ไทยหรืออังกฤษก็ได้)</li><li>คอลัมน์ <b>เรตติ้ง</b></li></ul>
+          <p className="mt-1.5 text-xs text-muted">ระบบเทียบรายชื่อกับทั้งชื่อไทยและชื่ออังกฤษของนักกีฬาในระบบ และบอกว่าตรงกับชื่อไหน</p>
           <button type="button" onClick={() => downloadSample().catch(() => toast('err', 'สร้างไฟล์ตัวอย่างไม่สำเร็จ'))} className="mt-2 inline-flex items-center gap-1.5 font-medium text-navy hover:underline"><FileDown className="h-4 w-4" />ดาวน์โหลดไฟล์ตัวอย่าง</button></div></section>
 
       <section onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={e => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files[0]; if (f) pick(f); }}
@@ -181,10 +185,10 @@ export default function ImportRatingsDialog({ athletes, cur, onClose, onChanged 
         <input ref={input} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) pick(f); e.target.value = ''; }} /></section>
       {readErr && <p role="alert" className="flex animate-fade-in gap-2 rounded-2xl bg-red-50 p-4 text-sm text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{readErr}</p>}
 
-      {sheet && cols && (<section className="card grid animate-fade-up gap-4 p-5 md:grid-cols-4">
+      {sheet && cols && (<section className="card grid animate-fade-up gap-4 p-5 md:grid-cols-3">
         {sheets!.length > 1 && <Field label="แผ่นงาน" htmlFor="col-sheet"><select id="col-sheet" className="input" value={si} onChange={e => { const i = Number(e.target.value); setSi(i); setCols(guessColumns(sheets![i].grid)); setDecide({}); }}>
           {sheets!.map((s, i) => <option key={s.name + i} value={i}>{s.name}</option>)}</select></Field>}
-        {colSelect('name', 'คอลัมน์รายชื่อ')}{colSelect('rating', 'คอลัมน์เรตติ้ง')}{colSelect('nameEn', 'ชื่อภาษาอังกฤษ', true)}</section>)}
+        {colSelect('name', 'คอลัมน์รายชื่อ')}{colSelect('rating', 'คอลัมน์เรตติ้ง')}</section>)}
 
       {sheet && cols && (cols.name === null || cols.rating === null) && <p className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">กรุณาเลือกคอลัมน์รายชื่อและคอลัมน์เรตติ้ง</p>}
       {plans.length > 0 && !game && <p className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">เลือกเกม (ครอสเวิร์ด หรือ เอแม็ท) เพื่อเทียบกับเรตติ้งปัจจุบัน</p>}
@@ -201,7 +205,7 @@ export default function ImportRatingsDialog({ athletes, cur, onClose, onChanged 
             <div className="mt-2 space-y-1.5">{p.candidates!.map(c => (<label key={c.person.id} className="flex cursor-pointer items-center gap-3 rounded-lg bg-white px-3 py-2 ring-1 ring-line hover:ring-navy/30">
               <input type="radio" name={`r${p.row}`} className="h-4 w-4 accent-navy" checked={decide[p.row] === c.person.id} onChange={() => setDecide(d => ({ ...d, [p.row]: c.person.id }))} />
               <span className="min-w-0 flex-1 text-sm">เป็นคนเดียวกับ <b>{c.person.full_name}</b>{c.person.full_name_en && <span className="text-muted"> ({c.person.full_name_en})</span>}
-                <span className="block text-xs text-muted">เรตติ้ง{th.games[game]}ปัจจุบัน {fmt(cur(c.person.id, game))} → {fmt(p.rating)} · ชื่อคล้ายกัน {Math.round(c.score * 100)}%{c.person.publication_status === 'archived' ? ' · สถานะจัดเก็บ' : ''}</span></span></label>))}
+                <span className="block text-xs text-muted">{c.score === 1 ? VIA[c.via] : c.swapped ? `${NEAR[c.via]} (ชื่อ-นามสกุลสลับกัน)` : `${NEAR[c.via]} ${Math.round(c.score * 100)}%`} · เรตติ้ง{th.games[game]}ปัจจุบัน {fmt(cur(c.person.id, game))} → {fmt(p.rating)}{c.person.publication_status === 'archived' ? ' · สถานะจัดเก็บ' : ''}</span></span></label>))}
               <label className="flex cursor-pointer items-center gap-3 rounded-lg bg-white px-3 py-2 ring-1 ring-line hover:ring-navy/30"><input type="radio" name={`r${p.row}`} className="h-4 w-4 accent-navy" checked={decide[p.row] === 'new'} onChange={() => setDecide(d => ({ ...d, [p.row]: 'new' }))} />
                 <UserPlus className="h-4 w-4 text-sky-700" /><span className="text-sm">เป็นนักกีฬาคนใหม่ (ชื่อถูกต้องแล้ว)</span></label>
               <label className="flex cursor-pointer items-center gap-3 rounded-lg bg-white px-3 py-2 ring-1 ring-line hover:ring-navy/30"><input type="radio" name={`r${p.row}`} className="h-4 w-4 accent-navy" checked={decide[p.row] === 'skip'} onChange={() => setDecide(d => ({ ...d, [p.row]: 'skip' }))} />
@@ -210,7 +214,9 @@ export default function ImportRatingsDialog({ athletes, cur, onClose, onChanged 
         {changes.length > 0 && <section className="card overflow-hidden"><h3 className="flex items-center gap-2 border-b border-line px-5 py-3 font-sans text-base font-semibold"><RefreshCw className="h-4 w-4 text-emerald-600" />เรตติ้งที่จะเปลี่ยน ({changes.length})</h3>
           <ul className="divide-y divide-line">{changes.map(p => { const d = p.old === undefined ? null : p.rating - p.old; return (<li key={p.row} className="grid grid-cols-[1fr_auto] items-center gap-3 px-5 py-2.5 sm:grid-cols-[3.5rem_1fr_auto_auto]">
             <span className="hidden text-xs text-muted sm:block">แถว {p.row}</span>
-            <span className="min-w-0"><span className="block truncate font-medium text-navy-dark">{p.match!.full_name}</span>{(p.chosen || nameKey(p.name) !== nameKey(p.match!.full_name)) && <span className="block truncate text-xs text-muted">ในไฟล์: {p.name}{p.chosen ? ' · เลือกเอง' : ''}</span>}</span>
+            <span className="min-w-0"><span className="flex flex-wrap items-center gap-x-2"><span className="truncate font-medium text-navy-dark">{p.match!.full_name}</span>{p.match!.full_name_en && <span className="truncate text-sm text-muted">{p.match!.full_name_en}</span>}</span>
+              <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">{p.chosen ? <span className="chip bg-amber-50 text-amber-800">เลือกเอง</span> : p.via && <span className={`chip ${p.via === 'en' ? 'bg-violet-50 text-violet-700' : 'bg-blue-light text-navy'}`}>{VIA[p.via]}</span>}
+                {(p.chosen || nameKey(p.name) !== nameKey(p.via === 'en' ? p.match!.full_name_en ?? '' : p.match!.full_name)) && <span className="truncate">ในไฟล์: {p.name}</span>}</span></span>
             <span className="flex items-center gap-1.5 tabular-nums"><span className="text-muted">{p.old === undefined ? 'ยังไม่มี' : fmt(p.old)}</span><ArrowRight className="h-3.5 w-3.5 text-muted" /><b className="text-navy-dark">{fmt(p.rating)}</b></span>
             <span className={`hidden w-16 text-right text-xs font-semibold tabular-nums sm:block ${d === null ? 'text-sky-700' : d > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{d === null ? 'ใหม่' : `${d > 0 ? '+' : ''}${fmt(d)}`}</span></li>); })}</ul></section>}
 
@@ -218,7 +224,7 @@ export default function ImportRatingsDialog({ athletes, cur, onClose, onChanged 
           <p className="border-b border-line bg-sky-50/60 px-5 py-2 text-xs text-sky-900">ไม่พบชื่อเหล่านี้หรือชื่อที่คล้ายกันในระบบ กรุณาตรวจการสะกดอีกครั้งก่อนยืนยัน ชื่อภาษาอังกฤษเพิ่มทีหลังในหน้าแก้ไขนักกีฬาได้</p>
           <ul className="divide-y divide-line">{news.map(p => (<li key={p.row} className="grid gap-2 px-5 py-2.5 sm:grid-cols-[3.5rem_1fr_1fr_auto] sm:items-center">
             <span className="hidden text-xs text-muted sm:block">แถว {p.row}</span><span className="font-medium text-navy-dark">{p.name}{p.chosen && <span className="ml-2 text-xs font-normal text-muted">เลือกเอง</span>}</span>
-            <input aria-label={`ชื่อภาษาอังกฤษของ ${p.name}`} className="input py-1.5 text-sm" placeholder="ชื่อภาษาอังกฤษ (ไม่บังคับ)" value={enNames[p.row] ?? (p.nameEn || (hasThai(p.name) ? '' : p.name))} onChange={e => setEnNames(s => ({ ...s, [p.row]: e.target.value }))} />
+            <input aria-label={`ชื่อภาษาอังกฤษของ ${p.name}`} className="input py-1.5 text-sm" placeholder="ชื่อภาษาอังกฤษ (ไม่บังคับ)" value={enNames[p.row] ?? (hasThai(p.name) ? '' : p.name)} onChange={e => setEnNames(s => ({ ...s, [p.row]: e.target.value }))} />
             <b className="text-right tabular-nums text-navy-dark">{fmt(p.rating)}</b></li>))}</ul></section>}
 
         {errors.length > 0 && <section className="card border-red-200 p-5"><h3 className="flex items-center gap-2 font-sans text-base font-semibold text-red-800"><AlertTriangle className="h-4 w-4" />แถวที่จะถูกข้าม ({errors.length})</h3>

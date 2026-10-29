@@ -35,16 +35,28 @@ export function similarity(a: string, b: string): number {
   return Math.max(r, sameFirst, contains);
 }
 export interface Person { id: string; full_name: string; full_name_en: string | null }
-export interface Match<T extends Person> { exact: T[]; similar: { person: T; score: number }[] }
-/** Index of people for fast exact lookup; similar names are scored on demand. */
+/** Which of the athlete's names matched: their Thai name or their English name. */
+export type Via = 'th' | 'en';
+export interface Match<T extends Person> { exact: { person: T; via: Via }[]; similar: { person: T; score: number; via: Via; swapped?: boolean }[] }
+const swap = (s: string) => tidy(s).replace(PREFIX, '').split(' ').reverse().join(' ');
+/**
+ * Index of people for fast exact lookup on BOTH their Thai and English names. Similar names are scored on demand against
+ * both names too; a name written surname-first ("Jaidee Somchai") is offered as a similar match, never accepted silently.
+ */
 export function buildIndex<T extends Person>(people: T[]) {
-  const byKey = new Map<string, T[]>();
-  for (const p of people) for (const n of [p.full_name, p.full_name_en]) { if (!n) continue; const k = nameKey(n); const l = byKey.get(k) ?? []; if (!l.includes(p)) l.push(p); byKey.set(k, l); }
+  const byKey = new Map<string, { person: T; via: Via }[]>();
+  const add = (k: string, person: T, via: Via) => { const l = byKey.get(k) ?? []; if (!l.some(x => x.person === person)) l.push({ person, via }); byKey.set(k, l); };
+  for (const p of people) { add(nameKey(p.full_name), p, 'th'); if (p.full_name_en) add(nameKey(p.full_name_en), p, 'en'); }
   return (name: string, threshold = 0.74): Match<T> => {
     const exact = byKey.get(nameKey(name)) ?? [];
     if (exact.length) return { exact, similar: [] };
-    const similar = people.map(p => ({ person: p, score: Math.max(similarity(name, p.full_name), p.full_name_en ? similarity(name, p.full_name_en) : 0) }))
-      .filter(x => x.score >= threshold).sort((x, y) => y.score - x.score).slice(0, 3);
+    const reversed = nameKey(swap(name));
+    const similar = people.map(p => {
+      const th = similarity(name, p.full_name), en = p.full_name_en ? similarity(name, p.full_name_en) : 0;
+      const sw = name.includes(' ') && (reversed === nameKey(p.full_name) || (!!p.full_name_en && reversed === nameKey(p.full_name_en)));
+      if (sw) return { person: p, score: 0.95, via: (reversed === nameKey(p.full_name) ? 'th' : 'en') as Via, swapped: true };
+      return { person: p, score: Math.max(th, en), via: (en > th ? 'en' : 'th') as Via };
+    }).filter(x => x.score >= threshold).sort((x, y) => y.score - x.score).slice(0, 3);
     return { exact, similar };
   };
 }
