@@ -36,6 +36,6 @@ export default function NewsCard({ n, row = false, index = 0 }: { n: NewsCardRow
           <span className="inline-flex items-center gap-1 text-muted"><CalendarDays className="h-3.5 w-3.5" />{fmtDate(n.published_at, lang, 'medium')}</span></div>
         <h3 className={`mt-1.5 line-clamp-2 text-[15px] font-semibold leading-6 text-navy-dark transition group-hover:text-navy ${row ? 'sm:mt-2 sm:min-h-[3.2rem] sm:text-base sm:leading-[1.6rem]' : 'sm:mt-3 sm:min-h-[3.8rem] sm:text-lg sm:leading-[1.9rem]'}`}>{nb(title)}</h3>
         <p className={`hidden text-sm text-muted sm:block ${row ? 'mt-1 min-h-[1.6rem]' : 'mt-1.5 min-h-[3.2rem]'}`}><span className={row ? 'line-clamp-1' : 'line-clamp-2'}>{excerpt ? nb(excerpt) :' '}</span></p>
-        {!row && <span className="mt-auto hidden items-center gap-1 pt-4 text-sm font-medium text-navy sm:inline-flex">{t.common.readMore}<ArrowRight className="h-4 w-4 transition duration-300 group-hover:translate-x-1" /></span>}
+        <span className={`mt-auto hidden items-center gap-1 text-sm font-medium text-navy sm:inline-flex ${row ? 'pt-2' : 'pt-4'}`}>{t.common.readMore}<ArrowRight className="h-4 w-4 transition duration-300 group-hover:translate-x-1" /></span>
       </div></Link></li>);
 }

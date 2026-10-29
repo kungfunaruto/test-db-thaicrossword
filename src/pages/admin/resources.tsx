@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarDays, MapPin } from 'lucide-react';
+import { Building2, CalendarClock, CalendarDays, MapPin } from 'lucide-react';
 import type { FilterDef, ResourceDef, Row } from './ResourceManager';
 import { competitionStatus } from '../../services/publicService';
 import { th } from '../../i18n/th';
@@ -8,7 +8,7 @@ import { STATUS_DOT, STATUS_STYLE } from '../../utils/labels';
 const GAMES = (['crossword', 'a_math', 'kumkom', 'sudoku'] as const).map(g => ({ value: g, label: th.games[g] }));
 const NEWS_CATS = [{ value: 'general', label: 'ประกาศทั่วไป' }, { value: 'competition', label: 'ประกาศการแข่งขัน' }];
 const eq = (k: string): FilterDef['test'] => (row, v) => String(row[k]) === v;
-const evStatus = (row: Row) => competitionStatus({ reg_close: String(row.reg_close), last_date: String(row.last_date) });
+const evStatus = (row: Row) => competitionStatus({ registration_deadline: (row.registration_deadline as string | null) ?? null, last_date: String(row.last_date) });
 export const CompStatus = ({ row }: { row: Row }) => { const s = evStatus(row); return <span className={`chip ${STATUS_STYLE[s]}`}><span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[s]}`} />{th.events.status[s]}</span>; };
 
 export const newsResource: ResourceDef = {
@@ -34,8 +34,8 @@ export const newsResource: ResourceDef = {
 export const eventsResource: ResourceDef = {
   table: 'events', title: 'จัดการการแข่งขัน', noun: 'การแข่งขัน', slugPrefix: 'event', thumb: true, revisions: true, pinnable: true,
   statusField: 'publication_status', statusMode: 'publish-draft', searchFields: ['title', 'title_en', 'venue'],
-  note: <>สถานะการแข่งขันคำนวณจากวันที่อัตโนมัติ (เวลาประเทศไทย): <b>เปิดรับสมัคร</b> จนถึงวันรับสมัครวันสุดท้าย → <b>ปิดรับสมัคร</b> จนถึงวันแข่งขันวันสุดท้าย → <b>สิ้นสุดการแข่งขัน</b></>,
-  filters: [{ key: 'comp', label: 'สถานะการแข่งขัน', options: (['open', 'closed', 'ended'] as const).map(s => ({ value: s, label: th.events.status[s] })), test: (row, v) => evStatus(row) === v },
+  note: <>สถานะคำนวณจากวันที่อัตโนมัติ (เวลาประเทศไทย): ถ้าใส่วันรับสมัครวันสุดท้าย <b>เปิดรับสมัคร</b> → <b>ปิดรับสมัคร</b> → <b>สิ้นสุดการแข่งขัน</b> · ถ้าไม่เปิดรับสมัคร (เว้นว่าง) <b>เร็ว ๆ นี้</b> → <b>สิ้นสุดการแข่งขัน</b> · หน้าการแข่งขันเรียงตามวันแข่งวันแรก โดยรายการที่ปักหมุดขึ้นก่อน</>,
+  filters: [{ key: 'comp', label: 'สถานะการแข่งขัน', options: (['open', 'closed', 'upcoming', 'ended'] as const).map(s => ({ value: s, label: th.events.status[s] })), test: (row, v) => evStatus(row) === v },
     { key: 'publication_status', label: 'การเผยแพร่', options: [{ value: 'published', label: 'เผยแพร่' }, { value: 'draft', label: 'ฉบับร่าง' }], test: eq('publication_status') }],
   defaults: { games: [], is_pinned: false },
   validate: v => {
@@ -46,18 +46,20 @@ export const eventsResource: ResourceDef = {
   },
   rowMeta: row => <span className="flex flex-wrap items-center gap-x-3 gap-y-1"><CompStatus row={row} />
     <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{fmtRange(String(row.start_date), row.end_date as string | null, 'th', 'medium')}</span>
-    <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />รับสมัครถึง {fmtDate(String(row.reg_close), 'th', 'medium')}</span>
+    <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{row.registration_deadline ? `รับสมัครถึง ${fmtDate(String(row.registration_deadline), 'th', 'medium')}` : 'ไม่เปิดรับสมัคร'}</span>
+    {!!row.organizer && <span className="inline-flex items-center gap-1"><Building2 className="h-3.5 w-3.5" />{String(row.organizer)}</span>}
     {!!row.venue && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{String(row.venue)}</span>}
     {Array.isArray(row.games) && <span>{(row.games as string[]).map(g => th.games[g]).join(', ')}</span>}</span>,
   fields: [
     { name: 'title', label: 'ชื่อการแข่งขัน', type: 'text', required: true, en: true },
     { name: 'games', label: 'ประเภทการแข่งขัน (เลือกได้หลายประเภท)', type: 'chips', options: GAMES, required: true },
     { name: 'description', label: 'รายละเอียด', type: 'textarea', rows: 12, required: true, en: true, hint: 'ข้อความธรรมดา ขึ้นบรรทัดใหม่ได้' },
+    { name: 'organizer', label: 'ผู้จัดการแข่งขัน (บริษัท / หน่วยงาน)', type: 'text', en: true, hint: 'แสดงบนการ์ดการแข่งขันและหน้ารายละเอียด' },
     { name: 'venue', label: 'สถานที่', type: 'text', en: true },
     { name: 'images', label: 'รูปภาพ / โปสเตอร์', type: 'images', bucket: 'event-images', hint: 'รูปแรกเป็นภาพปก โปสเตอร์แนวตั้งจะแสดงเต็มรูปโดยไม่ถูกตัด' },
     { name: 'start_date', label: 'วันเริ่มแข่งขัน', type: 'date', required: true, side: true },
     { name: 'end_date', label: 'วันแข่งขันวันสุดท้าย', type: 'date', side: true, hint: 'เว้นว่างถ้าแข่งวันเดียว' },
-    { name: 'registration_deadline', label: 'วันรับสมัครวันสุดท้าย', type: 'date', required: true, side: true },
+    { name: 'registration_deadline', label: 'วันรับสมัครวันสุดท้าย', type: 'date', side: true, hint: 'เว้นว่างถ้างานนี้ไม่เปิดรับสมัคร' },
     { name: 'result_url', label: 'ลิงก์ผลการแข่งขัน', type: 'url', side: true, placeholder: 'https://' },
     { name: 'teacher_certificate_url', label: 'ลิงก์เกียรติบัตรครู', type: 'url', side: true, placeholder: 'https://' },
     { name: 'student_certificate_url', label: 'ลิงก์เกียรติบัตรนักเรียน', type: 'url', side: true, placeholder: 'https://' },

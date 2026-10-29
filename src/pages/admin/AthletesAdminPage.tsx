@@ -72,8 +72,7 @@ function AthleteForm({ a, cur, onClose, onSaved, onComments }: { a: Ath | null; 
     if (busy || uploading) return;
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = 'กรุณากรอกชื่อ-นามสกุล (ภาษาไทย)';
-    if (!nameEn.trim()) e.nameEn = 'กรุณากรอกชื่อ-นามสกุล (ภาษาอังกฤษ)';
-    else if (/[฀-๿]/.test(nameEn)) e.nameEn = 'ช่องนี้ต้องเป็นภาษาอังกฤษ';
+    if (nameEn.trim() && /[฀-๿]/.test(nameEn)) e.nameEn = 'ช่องนี้ต้องเป็นภาษาอังกฤษ';
     if (games.length === 0) e.games = 'กรุณาเลือกกีฬาอย่างน้อย 1 ประเภท';
     for (const g of games) { const v = ratings[g].trim(); if (v !== '' && (!Number.isFinite(Number(v)) || Number(v) < 0)) e[`r_${g}`] = 'เรตติ้งต้องเป็นตัวเลขที่ไม่ติดลบ'; }
     if (!date) e.date = 'กรุณาเลือกวันที่มีผล';
@@ -91,7 +90,7 @@ function AthleteForm({ a, cur, onClose, onSaved, onComments }: { a: Ath | null; 
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-5"><Panel>
         <Field label="ชื่อ-นามสกุล (ภาษาไทย)" required error={err.name} htmlFor="a-name"><input id="a-name" className="input" value={name} onChange={e => setName(e.target.value)} placeholder="เช่น สมชาย ใจดี" /></Field>
-        <Field label="ชื่อ-นามสกุล (ภาษาอังกฤษ)" required error={err.nameEn} htmlFor="a-name-en" hint="แสดงเมื่อผู้ชมเลือกภาษาอังกฤษ"><input id="a-name-en" className="input" value={nameEn} onChange={e => setNameEn(e.target.value)} placeholder="e.g. Somchai Jaidee" /></Field>
+        <Field label="ชื่อ-นามสกุล (ภาษาอังกฤษ)" error={err.nameEn} htmlFor="a-name-en" hint="ไม่บังคับ · ถ้าเว้นว่าง หน้าเว็บภาษาอังกฤษจะแสดงชื่อภาษาไทยแทน"><input id="a-name-en" className="input" value={nameEn} onChange={e => setNameEn(e.target.value)} placeholder="e.g. Somchai Jaidee" /></Field>
         <Field label="กีฬาที่เล่น (เลือกได้หลายประเภท)" required error={err.games}><Chips value={games} onChange={setGames} options={GAMES} /></Field>
         {games.length > 0 && (<div className="animate-fade-in space-y-3 rounded-2xl bg-gray-light p-4"><p className="text-sm font-medium">เรตติ้งตามกีฬาที่เล่น (เว้นว่างได้ถ้ายังไม่มี)</p>
           <div className="grid gap-3 sm:grid-cols-2">{games.map(g => (<Field key={g} label={th.games[g]} error={err[`r_${g}`]} htmlFor={`r-${g}`}>
@@ -171,7 +170,7 @@ export default function AthletesAdminPage() {
       <ul className="stagger grid gap-2 md:grid-cols-2">{rows.map((a, i) => (<li key={a.id} style={{ ['--i' as string]: i }} className="card flex items-center gap-3 p-3 transition hover:shadow-lift">
         <button onClick={() => setEdit(a)} className="flex min-w-0 flex-1 items-center gap-3 text-left"><Avatar src={a.photo_url} alt={a.full_name} size={52} />
           <span className="min-w-0"><span className="flex items-center gap-2"><span className="truncate font-medium text-navy-dark">{a.full_name}</span><PubBadge s={a.publication_status} /></span>
-            <span className="block truncate text-xs text-muted">{a.full_name_en || <span className="text-amber-700">ยังไม่มีชื่อภาษาอังกฤษ</span>}</span>
+            {a.full_name_en && <span className="block truncate text-xs text-muted">{a.full_name_en}</span>}
             <span className="mt-1 flex flex-wrap gap-1">{a.games.map(g => <span key={g} className="chip bg-gray-light text-ink ring-1 ring-line">{th.games[g]}: <b className="text-navy">{cur[key(a.id, g)] ?? '—'}</b></span>)}
               {notes[a.id] > 0 && <span className="chip bg-amber-50 text-amber-800" title="ความเห็นภายใน"><MessageSquareText className="h-3 w-3" />{notes[a.id]}</span>}</span></span></button>
         <div className="flex shrink-0"><button aria-label="แก้ไข" title="แก้ไข" onClick={() => setEdit(a)} className="grid h-9 w-9 place-items-center rounded-full text-navy hover:bg-gray-light"><Pencil className="h-4 w-4" /></button>

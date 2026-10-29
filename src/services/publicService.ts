@@ -5,7 +5,7 @@ import { bangkokToday, bkkStartIso, addDays } from '../lib/dates';
 // List pages only fetch what the cards show (no full text), so lists load faster.
 const NEWS_CARD = 'id,images,category,title,title_en,excerpt,excerpt_en,published_at,is_pinned,created_at';
 const NEWS_FULL = `${NEWS_CARD},content,content_en,external_url,updated_at`;
-const EVENT_CARD = 'id,images,title,title_en,games,start_date,end_date,registration_deadline,reg_close,last_date,venue,venue_en,is_pinned,created_at';
+const EVENT_CARD = 'id,images,title,title_en,games,start_date,end_date,registration_deadline,reg_close,last_date,venue,venue_en,organizer,organizer_en,is_pinned,created_at';
 const EVENT_FULL = `${EVENT_CARD},description,description_en,result_url,teacher_certificate_url,student_certificate_url,updated_at`;
 export const PAGE_SIZE = 15; export const RANK_PAGE = 20; export const HOME_LIMIT = 5;
 const like = (q: string) => `%${q.trim().replace(/[\\%_]/g, m => `\\${m}`)}%`;
@@ -16,11 +16,14 @@ const notFound = (e: { code?: string }) => e.code === '22P02';
 const orLike = (cols: string[], q: string) => { const v = like(q.replace(/[,()"\\:]/g, ' ')); return cols.map(c => `${c}.ilike."${v}"`).join(','); };
 const orTitle = (q: string) => orLike(['title', 'title_en'], q);
 
-/** Competition status from dates, in Thailand time (same rule as the database columns reg_close / last_date). */
-export function competitionStatus(e: Pick<EventCardRow, 'reg_close' | 'last_date'>, today = bangkokToday()): CompetitionStatus {
-  if (today <= e.reg_close) return 'open';
-  if (today <= e.last_date) return 'closed';
-  return 'ended';
+/**
+ * Competition status from dates, in Thailand time. With a registration deadline: open → closed → ended.
+ * Without one (the competition does not take registrations): upcoming → ended.
+ */
+export function competitionStatus(e: Pick<EventCardRow, 'registration_deadline' | 'last_date'>, today = bangkokToday()): CompetitionStatus {
+  if (today > e.last_date) return 'ended';
+  if (!e.registration_deadline) return 'upcoming';
+  return today <= e.registration_deadline ? 'open' : 'closed';
 }
 
 export interface DateRange { from: string; to: string }
@@ -32,7 +35,8 @@ export async function fetchNews(o: NewsQuery) {
   if (o.category) qb = qb.eq('category', o.category);
   if (o.range) qb = qb.gte('published_at', bkkStartIso(o.range.from)).lt('published_at', bkkStartIso(addDays(o.range.to, 1)));
   const [a, b] = span(o.page, PAGE_SIZE);
-  const { data, count, error } = await qb.order('published_at', { ascending: false }).order('created_at', { ascending: false }).range(a, b);
+  // Pinned first (most recently pinned first), then the most recently ADDED.
+  const { data, count, error } = await qb.order('is_pinned', { ascending: false }).order('pinned_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }).range(a, b);
   if (error) throw error;
   return { rows: (data ?? []) as unknown as NewsCardRow[], total: count ?? 0 };
 }
@@ -61,12 +65,15 @@ export async function fetchEvents(o: EventsQuery) {
   const today = bangkokToday();
   let qb = supabase.from('events').select(EVENT_CARD, { count: 'exact' }).eq('publication_status', 'published');
   if (o.q.trim()) qb = qb.or(orTitle(o.q));
-  if (o.status === 'open') qb = qb.gte('reg_close', today);
-  if (o.status === 'closed') qb = qb.lt('reg_close', today).gte('last_date', today);
+  if (o.status === 'open') qb = qb.gte('registration_deadline', today).gte('last_date', today);
+  if (o.status === 'closed') qb = qb.lt('registration_deadline', today).gte('last_date', today);
+  if (o.status === 'upcoming') qb = qb.is('registration_deadline', null).gte('last_date', today);
   if (o.status === 'ended') qb = qb.lt('last_date', today);
   if (o.range) qb = qb.lte('start_date', o.range.to).gte('last_date', o.range.from); // competition days overlap the range
   const [a, b] = span(o.page, PAGE_SIZE);
-  const { data, count, error } = await qb.order('start_date', { ascending: false }).order('created_at', { ascending: false }).range(a, b);
+  // Pinned first, then by the first competition day (latest first).
+  const { data, count, error } = await qb.order('is_pinned', { ascending: false }).order('pinned_at', { ascending: false, nullsFirst: false })
+    .order('start_date', { ascending: false }).order('created_at', { ascending: false }).range(a, b);
   if (error) throw error;
   return { rows: (data ?? []) as unknown as EventCardRow[], total: count ?? 0 };
 }

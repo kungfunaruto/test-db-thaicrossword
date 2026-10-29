@@ -6,10 +6,10 @@ export interface NewsCardRow {
 }
 export interface NewsRow extends NewsCardRow { content: string; content_en: string | null; external_url: string | null; updated_at: string }
 
-export type CompetitionStatus = 'open' | 'closed' | 'ended';
+export type CompetitionStatus = 'open' | 'closed' | 'upcoming' | 'ended';
 export interface EventCardRow {
   id: string; images: string[]; title: string; title_en: string | null; games: string[]; start_date: string; end_date: string | null;
-  registration_deadline: string | null; reg_close: string; last_date: string; venue: string | null; venue_en: string | null; is_pinned: boolean; created_at: string;
+  registration_deadline: string | null; reg_close: string; last_date: string; venue: string | null; venue_en: string | null; organizer: string | null; organizer_en: string | null; is_pinned: boolean; created_at: string;
 }
 export interface EventRow extends EventCardRow {
   description: string; description_en: string | null; result_url: string | null; teacher_certificate_url: string | null; student_certificate_url: string | null; updated_at: string;

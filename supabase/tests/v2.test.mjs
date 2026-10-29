@@ -105,7 +105,9 @@ await t('deleting an item deletes its revisions', () => admin(async () => { awai
 const SAVE = `select public.admin_save_athlete($1::uuid,$2::text,$3::text,$4::text,$5::text[],$6::text,$7::jsonb,$8::date) id`;
 const save = (id, th, en, games, ratings, o = {}) => rows(SAVE, [id, th, en, o.photo ?? null, games, o.pub ?? 'published', JSON.stringify(ratings), '2026-02-01']).then(r => r[0].id);
 let ath;
-await t('rpc: Thai and English names both required', () => admin(async () => (await throws(() => save(null, 'สมหญิง', ' ', '{a_math}', []))) && (await throws(() => save(null, ' ', 'Somying', '{a_math}', [])))));
+await t('rpc: Thai name required, English name optional', () => admin(async () => { if (!(await throws(() => save(null, ' ', 'Somying', '{a_math}', [])))) return false;
+  if (files.some(f => f.includes('english_name_optional'))) { const id = await save(null, 'ชื่อไทยอย่างเดียว', ' ', '{a_math}', []); return (await one('select full_name_en from public.athletes where id=$1', [id])).full_name_en === null; }
+  return throws(() => save(null, 'สมหญิง', ' ', '{a_math}', [])); }));
 await t('rpc: saves photo + English name + rating', () => admin(async () => { ath = await save(null, 'สมหญิง เก่ง', 'Somying Keng', '{a_math}', [{ game: 'a_math', value: 1800 }], { photo: 'https://img/p.jpg' });
   const r = await one('select full_name_en, photo_url, publication_status, is_active from public.athletes where id=$1', [ath]); return r.full_name_en === 'Somying Keng' && r.photo_url === 'https://img/p.jpg' && r.is_active; }));
 await t('rpc: draft status rejected; anon / non-admin denied', async () => (await admin(() => throws(() => save(null, 'ก', 'K', '{a_math}', [], { pub: 'draft' }))))
@@ -143,6 +145,15 @@ await t('analytics RPC: admin gets totals, daily series and top pages', () => ad
     && a.daily.at(-1).views === 2 && a.top_pages.length === 2 && a.hours.length === 24 && a.devices[0].device === 'mobile' && a.top_news.length === 0; }));
 await t('analytics RPC: anon / non-admin denied', async () => (await anon(() => throws(() => rows('select public.admin_analytics(30)')))) && (await user(() => throws(() => rows('select public.admin_analytics(30)')))));
 
+// ---- organiser (migration 20261031000003)
+if (files.some(f => f.includes('event_organizer'))) {
+  await t('organizer: public can read it; changing it on a published competition needs a note, its English twin does not', () => admin(async () => {
+    await rows(`insert into public.events (title,slug,start_date,description,publication_status,games,organizer) values ('o','o-1','2026-12-10','d','published','{crossword}','บริษัท ก')`);
+    const needs = await throws(() => rows(`update public.events set organizer='บริษัท ข' where slug='o-1'`), 'EDIT_NOTE_REQUIRED');
+    await rows(`update public.events set organizer_en='Company A', title_en='O' where slug='o-1'`);
+    const r = await anon(() => rows(`select organizer, organizer_en from public.events where slug='o-1'`));
+    return needs && r[0].organizer === 'บริษัท ก' && r[0].organizer_en === 'Company A'; }));
+}
 // ---- structure
 await t('RLS enabled on every public table', async () => (await rows(`select relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r' and not c.relrowsecurity`)).length === 0);
 await t('old 9-argument save RPC removed', async () => (await rows(`select 1 from pg_proc where proname='admin_save_athlete'`)).length === 1);

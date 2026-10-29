@@ -42,9 +42,9 @@ export const th = {
   },
   events: {
     title: 'การแข่งขัน', desc: 'รายการแข่งขันทั้งหมดของสมาคม พร้อมกำหนดการรับสมัคร', searchPh: 'ค้นหาชื่อการแข่งขัน',
-    status: { open: 'เปิดรับสมัคร', closed: 'ปิดรับสมัคร', ended: 'สิ้นสุดการแข่งขัน' } as Record<string, string>, statusLabel: 'สถานะ',
+    status: { open: 'เปิดรับสมัคร', closed: 'ปิดรับสมัคร', upcoming: 'เร็ว ๆ นี้', ended: 'สิ้นสุดการแข่งขัน' } as Record<string, string>, statusLabel: 'สถานะ',
     empty: 'ยังไม่มีรายการแข่งขัน', emptyFiltered: 'ไม่พบการแข่งขันที่ตรงกับเงื่อนไข', notFound: 'ไม่พบการแข่งขันที่ต้องการ', backToList: 'กลับไปหน้าการแข่งขัน',
-    date: 'วันแข่งขัน', deadline: 'รับสมัครถึง', venue: 'สถานที่', games: 'ประเภทเกม', info: 'ข้อมูลการแข่งขัน', details: 'รายละเอียด',
+    date: 'วันแข่งขัน', deadline: 'รับสมัครถึง', venue: 'สถานที่', organizer: 'ผู้จัดการแข่งขัน', games: 'ประเภทเกม', info: 'ข้อมูลการแข่งขัน', details: 'รายละเอียด',
     daysLeft: (d: number) => (d === 0 ? 'วันนี้วันสุดท้าย' : `เหลืออีก ${n(d)} วัน`), startsIn: (d: number) => (d === 0 ? 'แข่งขันวันนี้' : `อีก ${n(d)} วันจะเริ่มแข่ง`),
     result: 'ดูผลการแข่งขัน', teacherCert: 'เกียรติบัตรครู', studentCert: 'เกียรติบัตรนักเรียน', documents: 'ผลการแข่งขันและเอกสาร',
   },

@@ -15,9 +15,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setTimeout(() => close(id), kind === 'err' ? 8000 : 5000);
   }, []);
   return (<Ctx.Provider value={push}>{children}
-    <div aria-live="polite" className="fixed bottom-4 right-4 z-[90] flex w-[min(92vw,380px)] flex-col gap-2">
+    {/* Top centre (below the phone top bar), above every dialog: never covers the Save / action buttons at the bottom or on the right. */}
+    <div aria-live="polite" className="pointer-events-none fixed left-1/2 top-[4.5rem] z-[100] flex w-[min(92vw,420px)] -translate-x-1/2 flex-col gap-2 md:top-4">
       {items.map(t => { const Icon = ICON[t.kind]; return (<div key={t.id} role={t.kind === 'err' ? 'alert' : 'status'}
-        className={`flex animate-toast-in items-start gap-3 rounded-2xl border px-4 py-3 text-sm shadow-lift ${STYLE[t.kind]}`}>
+        className={`pointer-events-auto flex animate-slide-down items-start gap-3 rounded-2xl border px-4 py-3 text-sm shadow-lift ${STYLE[t.kind]}`}>
         <Icon className="mt-0.5 h-5 w-5 shrink-0" /><p className="flex-1">{t.text}</p>
         <button onClick={() => close(t.id)} aria-label="ปิด" className="rounded-full p-0.5 opacity-60 hover:opacity-100"><X className="h-4 w-4" /></button></div>); })}
     </div></Ctx.Provider>);

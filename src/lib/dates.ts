@@ -25,8 +25,15 @@ export function fmtDateTime(s: string, lang: Lang) {
 export const fmtRange = (a: string, b: string | null | undefined, lang: Lang, style: 'long' | 'medium' = 'long') =>
   (b && b !== a ? `${fmtDate(a, lang, style)} – ${fmtDate(b, lang, style)}` : fmtDate(a, lang, style));
 export const monthTitle = (d: Date, lang: Lang) => new Intl.DateTimeFormat(locale(lang), { month: 'long', year: 'numeric' }).format(d);
-/** Day/month parts for date badges, e.g. { day: '29', month: 'ต.ค.' }. */
-export const dateParts = (s: string, lang: Lang) => {
-  const d = new Date(s); const tz = isDateOnly(s) ? 'UTC' : TZ;
-  return { day: new Intl.DateTimeFormat(locale(lang), { day: 'numeric', timeZone: tz }).format(d), month: new Intl.DateTimeFormat(locale(lang), { month: 'short', timeZone: tz }).format(d) };
-};
+/**
+ * Short competition-day badge: "11" + "พ.ย." for one day, "20–21" + "พ.ย." within one month,
+ * "30 พ.ย. – 2 ธ.ค." (long) across months. Date-only strings, no timezone shift.
+ */
+export function dateBadge(start: string, end: string | null | undefined, lang: Lang): { main: string; sub: string; long: boolean } {
+  const f = (s: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(locale(lang), { ...o, timeZone: 'UTC' }).format(new Date(s));
+  const d1 = f(start, { day: 'numeric' }), m1 = f(start, { month: 'short' });
+  if (!end || end === start) return { main: d1, sub: m1, long: false };
+  const d2 = f(end, { day: 'numeric' }), m2 = f(end, { month: 'short' });
+  if (start.slice(0, 7) === end.slice(0, 7)) return { main: `${d1}–${d2}`, sub: m1, long: false };
+  return { main: `${d1} ${m1} – ${d2} ${m2}`, sub: '', long: true };
+}

@@ -43,9 +43,9 @@ export const en: Dict = {
   },
   events: {
     title: 'Competitions', desc: 'All competitions held by the association, with registration dates', searchPh: 'Search competitions',
-    status: { open: 'Registration open', closed: 'Registration closed', ended: 'Competition ended' }, statusLabel: 'Status',
+    status: { open: 'Registration open', closed: 'Registration closed', upcoming: 'Upcoming', ended: 'Competition ended' }, statusLabel: 'Status',
     empty: 'No competitions yet', emptyFiltered: 'No competitions match these filters', notFound: 'This competition was not found.', backToList: 'Back to competitions',
-    date: 'Competition date', deadline: 'Registration closes', venue: 'Venue', games: 'Games', info: 'Competition details', details: 'Details',
+    date: 'Competition date', deadline: 'Registration closes', venue: 'Venue', organizer: 'Organiser', games: 'Games', info: 'Competition details', details: 'Details',
     daysLeft: d => (d === 0 ? 'Last day today' : `${s(d, 'day', 'days')} left`), startsIn: d => (d === 0 ? 'Starts today' : `Starts in ${s(d, 'day', 'days')}`),
     result: 'View results', teacherCert: 'Teacher certificates', studentCert: 'Student certificates', documents: 'Results & documents',
   },
