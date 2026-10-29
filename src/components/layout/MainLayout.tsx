@@ -12,7 +12,7 @@ import { LoadingState } from '../common/States';
 /** Transparent emblem (background removed). Only the height is set; width follows the image's aspect ratio. */
 export function Logo({ className }: { className: string }) {
   const { t } = useLang();
-  return <img src="/logo/tca-logo-256.webp" alt={t.site.logoAlt} width={301} height={256} className={`${className} w-auto shrink-0 drop-shadow-sm`} />;
+  return <img src="/logo/tca-logo-256.webp" alt={t.site.logoAlt} width={301} height={256} className={`${className} w-auto max-w-full shrink-0 object-contain drop-shadow-sm`} />;
 }
 
 const NAV = ['/', '/about', '/news', '/games', '/events', '/rankings', '/qa'] as const;
@@ -63,7 +63,7 @@ function Footer() {
     <div className="h-1 bg-gradient-to-r from-gold via-flame to-gold" />
     <div className="grid-pattern absolute inset-0 opacity-40" aria-hidden="true" />
     <div className="relative mx-auto grid max-w-6xl gap-10 px-4 py-12 md:grid-cols-[1.4fr_1fr]">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center"><Logo className="h-24" />
+      <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center"><Logo className="h-24" />
         <div><p className="font-display text-lg font-medium text-white"><Th parts={t.site.parts} /></p><p className="mt-1 text-xs text-slate-400">{t.site.secondary}</p>
           <p className="mt-3 text-slate-400">{t.footer.about}</p></div></div>
       <div><p className="mb-3 font-semibold text-white">{t.footer.contact}</p>
@@ -71,7 +71,7 @@ function Footer() {
           : <p className="text-slate-400">{t.footer.pending}</p>}
         {site.social.map(s => <a key={s.url} className="mt-4 inline-flex items-center gap-2 rounded-full bg-white/5 px-4 py-2 ring-1 ring-white/10 transition hover:bg-[#1877F2] hover:text-white" href={s.url} target="_blank" rel="noopener noreferrer">
           <Facebook className="h-4 w-4" />{t.footer.facebook}</a>)}</div></div>
-    <p className="relative border-t border-white/10 py-5 text-center text-xs text-slate-400">© {new Date().getFullYear()} {t.site.name}</p></footer>);
+    <p className="relative border-t border-white/10 px-16 py-5 text-center text-xs text-slate-400 sm:px-4">© {new Date().getFullYear()} {t.site.name}</p></footer>);
 }
 
 function BackToTop() {
