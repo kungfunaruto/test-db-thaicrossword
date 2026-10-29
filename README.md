@@ -9,12 +9,12 @@ Public site in **Thai and English** (switch in the header). Admin panel in Thai.
 ## 2. Structure
 - `src/i18n/` `th.ts` (source) / `en.ts` (same shape): every public UI string. `useLang()` gives `{ lang, t, setLang }`; `loc(row, 'title', lang)` picks `title_en` when English is selected and filled, otherwise the Thai column. Choice is saved in `localStorage` (`tca-lang`); `?lang=en` also works.
 - `src/content/` long static content: rules (`rules/*.ts` Thai, `rules/en/*.ts` English), competition formats, About (`about.ts`, `about.en.ts`).
-- `src/lib/` `query.ts` (stale-while-revalidate cache + `prefetch`), `prefetch.ts` (route + data prefetch on hover), `dates.ts` (Thailand-time "today", TH/EN date formatting, Buddhist era in Thai), `translate.ts` (Thai→English machine translation), `images.ts` (resize/compress before upload), `analytics.ts` (anonymous page views).
+- `src/lib/` `query.ts` (stale-while-revalidate cache + `prefetch`), `prefetch.ts` (route + data prefetch on hover), `dates.ts` (Thailand-time "today", TH/EN date formatting, Buddhist era in Thai), `translate.ts` (Thai→English machine translation), `images.ts` (resize/compress before upload), `analytics.ts` (anonymous page views), `excel.ts` (athlete/rating .xlsx download + .xlsx/.csv reading; exceljs is loaded only when used).
 - `src/services/publicService.ts` (all public reads), `adminService.ts` (auth, counts, analytics RPC).
 - `src/components/` `common/` (PageHeader, SmartImage, Gallery, Lightbox, DateRangePicker, Segmented, Pagination, EditedBadge, ShareButtons, TopProgress, States…), `news/`, `events/`, `rankings/` (Avatar, Leaderboard), `rules/` (BlockView, Toc, FormatsBlock, ToolBlocks, WordChecker), `layout/MainLayout.tsx`.
 - `src/pages/` public pages (every page except Home is lazy-loaded) and `pages/admin/` (ResourceManager + `resources.tsx` configs for news / competitions / Q&A, AthletesAdminPage, QaAdminPage with visitor-question inbox, AdminDashboardPage + `charts.tsx`).
 - `api/translate.ts` Vercel Edge Function (admin-only proxy to Google Translate); `api/_gtranslate.ts` shared with the Vite dev server.
-- `public/logo/` `tca-logo.jpg` (original, untouched) and transparent versions generated from it: `tca-logo.png/.webp`, `tca-logo-256.png/.webp` (used on the site), `favicon-64.png`.
+- `public/logo/` `tca-logo-original.webp` (emblem supplied 30 Oct 2026, untouched) and files generated from it: `tca-logo.png/.webp` (transparent, full size), `tca-logo-256.png/.webp` (used on the site), `favicon-64.png`, `apple-touch-icon.png` (white background for iOS), `tca-logo.jpg` (on white, kept for old links). Regenerate all of them whenever the emblem changes.
 
 ## 3. Setup
 ```
@@ -26,6 +26,7 @@ First admin: create a user in Supabase → Authentication, then `insert into pub
 
 ## 4. Going live with v2 (do in this order)
 1. **Supabase SQL editor:** run `supabase/migrations/20261029000001_v2_bilingual_galleries_analytics.sql` (after migrations 1–6). It is safe to run twice. It converts existing data:
+   Then run `supabase/migrations/20261030000001_athlete_excel_import.sql` (Excel import function).
    news categories → `general` / `competition` (old "ผลการแข่งขัน" → competition, others → general); news/events `archived` → `draft`; events `game_type` → `games[]` (`multiple` → all four games); athletes `draft` or inactive → `archived`; FAQ `draft` → `archived`; first image → `images[]`.
 2. **Deploy the new code right after** (the old deployed site does not understand the new statuses/columns).
 3. Vercel env vars `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` must exist (the translate function reuses them).
@@ -50,11 +51,13 @@ First admin: create a user in Supabase → Authentication, then `insert into pub
 - **Rankings:** school/province removed; athlete photos with default avatar; podium for the top 3; Thai/English names.
 - **Q&A:** visitors can send a question (question only, no personal data; honeypot + 30-second client throttle + DB flood guard).
 - **Admin:** slide-over forms; multi-image upload (drag & drop, reorder, first = cover, resized to ≤2000px WebP in the browser); "บันทึก/บันทึกฉบับร่าง" buttons instead of a status menu; news categories general/competition; competitions: multi-select games, registration deadline required, no activity type, computed status; English tab with auto-translation on save (only for empty fields or when the Thai changed and the English was not edited by hand) and per-field re-translate; athletes: photo, Thai + English names (both required, typed by hand), published/archived, private comments; Q&A: published/archived, newest first, **visitor-question inbox** ("ตอบ" opens a pre-filled Q&A form and marks the question answered; unread count badge in the sidebar).
+- **Excel import / edit (athletes & ratings):** `/admin/rankings` → "นำเข้า / แก้ไขด้วย Excel". Download the current list (or a blank template), edit in Excel, upload (.xlsx or .csv). The file has an "id" column for matching (rows without id match by exact Thai name; new athletes need Thai + English names), rating columns per rated game, and a status dropdown. Empty cells = no change; ratings are never deleted. A preview shows every row as new / changed (old → new) / unchanged / error with reasons; error rows are skipped. One effective date is chosen for the ratings. The import runs in one database transaction (`admin_import_athletes`); a rating is added to the history only when it differs from the current one (source `csv_import`), so re-uploading the same file changes nothing.
 - **Dashboard:** 4 totals (news, competitions, athletes, Q&A) + visitor analytics: online now, visitors today / this month / all time, daily visitors & page views (7/30/90 days, with table view), top pages, top news, top competitions, busiest hours (Thailand time), devices, language, referrers, new visitors, pages per visit. Auto-refresh every minute.
 - **Speed:** per-page code splitting (first load ~141 KB gzip, was one 604 KB bundle), page data cached and shown instantly when revisiting, code + data prefetched when hovering a link, list queries fetch card columns only, `preconnect` to Supabase, skeletons instead of blank spinners, uploads compressed, long cache headers for `/assets`.
 
 ## 7. Testing
-- `npm run test:db`: runs migrations on PGlite with Supabase-style roles. `db.test.mjs 6` (migrations 1–6, 72 tests) + `v2.test.mjs` (old-shape data → migration 7 twice → mapping, RLS, grants, edit-note trigger, computed status, athlete RPC, comments, submissions + flood guard, analytics RPC; 40 tests). Latest: 112 passed, 0 failed.
+- `npm run test:db`: runs migrations on PGlite with Supabase-style roles. `db.test.mjs 6` (migrations 1–6, 72 tests) + `v2.test.mjs` (old-shape data → migration 7 twice → mapping, RLS, grants, edit-note trigger, computed status, athlete RPC, comments, submissions + flood guard, analytics RPC; 40 tests) + `import.test.mjs` (Excel import: create/update/unchanged, history, all-or-nothing rollback, validation, permissions; 10 tests). Latest: 122 passed, 0 failed.
+- Excel flow verified in headless Chromium against the mock API: download current list + blank template (2 sheets, frozen header, status dropdown, numeric validation), edit, upload .xlsx and .csv, preview (new/changed/unchanged/error incl. duplicates and bad numbers), import.
 - UI verified in Chromium against a local mock of the Supabase API (desktop 1280px, tablet 800px, phone 390px; Thai and English; admin login, forms, edit-note enforcement, inbox answer flow): no console errors.
 - **Not yet tested against the real Supabase project** (migration 7 must be run there first) and the Vercel `api/translate` function has not been deployed/tested.
 
@@ -63,7 +66,8 @@ First admin: create a user in Supabase → Authentication, then `insert into pub
 - [?] English translations of the rules and About page were written by hand from the Thai text; the association should review them. The Thai PDF remains the official rules.
 - [?] Uploaded images that are removed from a form stay in Storage (no automatic cleanup).
 - [?] A-Math equation squares, Kumkom = Thaismith PDF, About-page pending items, official rating formula: unchanged from before (see git history).
-- [ ] Windows `ThaiWordChallenge.exe` still not built (see `tools/kumkom-challenge/README.md`); CSV import/export; Sudoku rules page.
+- [ ] Windows `ThaiWordChallenge.exe` still not built (see `tools/kumkom-challenge/README.md`); Sudoku rules page.
+- [?] `npm audit`: exceljs 4.4.0 pulls an old `uuid` (moderate; only affects a code path the site does not use). Older findings for react-router and zod predate this work.
 
 ## 9. How to resume
 1. Read this README. 2. `git status`. 3. `npm run build && npm run test:db`. 4. Continue from §4 / §8. If repo and README disagree, the repo wins; fix the README.

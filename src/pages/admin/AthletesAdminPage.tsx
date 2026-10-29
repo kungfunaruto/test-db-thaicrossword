@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { History, Loader2, Lock, MessageSquareText, Pencil, Plus, Save, Search, Send, Trash2 } from 'lucide-react';
+import { FileSpreadsheet, History, Loader2, Lock, MessageSquareText, Pencil, Plus, Save, Search, Send, Trash2 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import { RANKED_GAMES } from '../../utils/labels';
 import { th } from '../../i18n/th';
@@ -11,6 +11,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/common/St
 import Avatar from '../../components/rankings/Avatar';
 import ImagesField from './ImagesField';
 import { AdminHeader, Chips, Drawer, Field, Panel, Pills, PubBadge } from './ui';
+import ImportAthletesDialog from './ImportAthletesDialog';
 
 interface Ath { id: string; full_name: string; full_name_en: string | null; photo_url: string | null; games: string[]; publication_status: 'published' | 'archived' }
 interface Cur { athlete_id: string; game_type: string; rating_value: number }
@@ -134,7 +135,7 @@ export default function AthletesAdminPage() {
   const [aths, setAths] = useState<Ath[] | null>(null); const [cur, setCur] = useState<Record<string, number>>({}); const [notes, setNotes] = useState<Record<string, number>>({}); const [failed, setFailed] = useState(false);
   const [q, setQ] = useState(''); const [game, setGame] = useState(''); const [pub, setPub] = useState('');
   const [edit, setEdit] = useState<Ath | 'new' | null>(null); const [hist, setHist] = useState<Ath | null>(null);
-  const [del, setDel] = useState<Ath | null>(null); const [deleting, setDeleting] = useState(false);
+  const [del, setDel] = useState<Ath | null>(null); const [deleting, setDeleting] = useState(false); const [excel, setExcel] = useState(false);
   const loadNotes = useCallback(async () => {
     const c = await fetchAll<{ athlete_id: string }>('athlete_comments', 'athlete_id', ['athlete_id']).catch(() => []);
     setNotes(c.reduce<Record<string, number>>((m, x) => ({ ...m, [x.athlete_id]: (m[x.athlete_id] ?? 0) + 1 }), {}));
@@ -159,7 +160,8 @@ export default function AthletesAdminPage() {
     toast('ok', 'ลบนักกีฬาแล้ว'); setDel(null); invalidate('rank:'); load();
   }
   return (<div className="mx-auto max-w-6xl">
-    <AdminHeader title="นักกีฬาและอันดับ" sub={aths ? `ทั้งหมด ${aths.length} คน` : undefined} action={<button onClick={() => setEdit('new')} className="btn-primary"><Plus className="h-4 w-4" />เพิ่มนักกีฬา</button>} />
+    <AdminHeader title="นักกีฬาและอันดับ" sub={aths ? `ทั้งหมด ${aths.length} คน` : undefined} action={<div className="flex flex-wrap gap-2"><button onClick={() => setExcel(true)} disabled={!aths} className="btn-outline"><FileSpreadsheet className="h-4 w-4 text-emerald-600" />นำเข้า / แก้ไขด้วย Excel</button>
+      <button onClick={() => setEdit('new')} className="btn-primary"><Plus className="h-4 w-4" />เพิ่มนักกีฬา</button></div>} />
     <p className="mb-4 rounded-2xl bg-blue-light p-4 text-sm text-navy-dark">ระบบเรตติ้งมีเฉพาะครอสเวิร์ดและเอแม็ท นักกีฬาจะแสดงในหน้าอันดับเมื่อสถานะเป็น "เผยแพร่" ได้เลือกกีฬานั้น และมีเรตติ้ง</p>
     <div className="card mb-4 flex flex-col gap-3 p-3 sm:flex-row">
       <label className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" /><input aria-label="ค้นหา" placeholder="ค้นหาชื่อ (ไทย/อังกฤษ)" value={q} onChange={e => setQ(e.target.value)} className="input pl-10" /></label>
@@ -177,6 +179,7 @@ export default function AthletesAdminPage() {
           <button aria-label="ลบ" title="ลบ" onClick={() => setDel(a)} className="grid h-9 w-9 place-items-center rounded-full text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button></div></li>))}</ul>}
     {edit && <AthleteForm a={edit === 'new' ? null : edit} cur={cur} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} onComments={loadNotes} />}
     {hist && <HistoryModal a={hist} onClose={() => setHist(null)} onChanged={load} />}
+    {excel && aths && <ImportAthletesDialog athletes={aths} cur={(id, g) => cur[key(id, g)]} onClose={() => setExcel(false)} onDone={() => { setExcel(false); load(); }} />}
     <ConfirmDialog open={!!del} title="ลบนักกีฬา" message="ต้องการลบนักกีฬาคนนี้หรือไม่? การลบไม่สามารถย้อนกลับได้" busy={deleting} onConfirm={remove} onCancel={() => setDel(null)} />
   </div>);
 }
