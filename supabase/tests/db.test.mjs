@@ -1,7 +1,8 @@
 import { PGlite } from '@electric-sql/pglite';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 const upto = Number(process.argv[2] ?? 99);
-const dir = new URL('../migrations/', import.meta.url).pathname;
+const dir = fileURLToPath(new URL('../migrations/', import.meta.url));
 const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort().slice(0, upto);
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create schema auth;

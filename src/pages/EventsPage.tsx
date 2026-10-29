@@ -1,24 +1,38 @@
-import { useState } from 'react';
-import { fetchEvents, EVENTS_PAGE } from '../services/publicService';
+import { useRef } from 'react';
+import { FilterX } from 'lucide-react';
+import { eventsKey, fetchEvents, PAGE_SIZE, type EventsQuery } from '../services/publicService';
+import { useQuery } from '../lib/query';
+import { usePageMeta } from '../hooks/usePublic';
+import { useListParams } from '../hooks/useListParams';
+import { useLang } from '../i18n';
+import { STATUS_DOT } from '../utils/labels';
 import PageHeader from '../components/common/PageHeader';
-import { useAsync, useDebounced, usePageMeta } from '../hooks/usePublic';
 import EventCard from '../components/events/EventCard';
 import Pagination from '../components/common/Pagination';
-import { EmptyState, ErrorState, LoadingState } from '../components/common/States';
-import { STATUS_LABEL } from '../utils/labels';
+import Segmented from '../components/common/Segmented';
+import SearchInput from '../components/common/SearchInput';
+import DateRangePicker from '../components/common/DateRangePicker';
+import { CardSkeletons, EmptyState, ErrorState } from '../components/common/States';
+
 export default function EventsPage() {
-  usePageMeta('การแข่งขันและกิจกรรม', 'รายการแข่งขันและกิจกรรมของสมาคม');
-  const [q, setQ] = useState(''); const [status, setStatus] = useState(''); const [oldest, setOldest] = useState(false); const [page, setPage] = useState(1);
-  const dq = useDebounced(q);
-  const { data, error } = useAsync(() => fetchEvents({ q: dq, status, oldest, page }), [dq, status, oldest, page]);
-  const f = 'rounded border border-slate-300 bg-white p-2.5';
-  return (<><PageHeader title="การแข่งขันและกิจกรรม" desc="รายการแข่งขันและกิจกรรมทั้งหมดของสมาคม" /><div className="mx-auto max-w-6xl px-4 py-10">
-    <div className="mb-8 flex flex-wrap gap-2 rounded-lg bg-gray-light p-3">
-      <input aria-label="ค้นหาชื่อกิจกรรม" placeholder="ค้นหาชื่อกิจกรรม" value={q} onChange={e => { setQ(e.target.value); setPage(1); }} className={f} />
-      <select aria-label="สถานะ" value={status} onChange={e => { setStatus(e.target.value); setPage(1); }} className={f}><option value="">ทุกสถานะ</option>
-        {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-      <select aria-label="เรียงลำดับ" value={oldest ? 'old' : 'new'} onChange={e => { setOldest(e.target.value === 'old'); setPage(1); }} className={f}><option value="new">ใหม่สุดก่อน</option><option value="old">เก่าสุดก่อน</option></select></div>
-    {error ? <ErrorState /> : !data ? <LoadingState /> : data.rows.length === 0 ? <EmptyState text="ยังไม่มีรายการแข่งขันหรือกิจกรรม" /> :
-      <ul className="grid gap-2.5 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">{data.rows.map(e => <EventCard key={e.id} e={e} />)}</ul>}
-    {data && <Pagination page={page} total={data.total} size={EVENTS_PAGE} onChange={setPage} />}</div></>);
+  const { t } = useLang();
+  usePageMeta(t.events.title, t.events.desc);
+  const p = useListParams(['open', 'closed', 'ended']);
+  const query: EventsQuery = { q: p.dq, status: p.filter, range: p.range, page: p.page };
+  const res = useQuery(eventsKey(query), () => fetchEvents(query), { keepPrevious: true });
+  const top = useRef<HTMLDivElement>(null);
+  const goPage = (n: number) => { p.setPage(n); top.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  return (<><PageHeader title={t.events.title} desc={t.events.desc} />
+    <div ref={top} className="mx-auto max-w-6xl scroll-mt-20 px-4 py-8 md:py-10">
+      <div className="card relative z-20 mb-6 flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center"><SearchInput value={p.q} onChange={p.setQ} placeholder={t.events.searchPh} /><DateRangePicker value={p.range} onChange={p.setRange} future /></div>
+        <Segmented label={t.events.statusLabel} value={p.filter} onChange={p.setFilter}
+          options={[{ value: '', label: t.common.all }, ...(['open', 'closed', 'ended'] as const).map(s => ({ value: s, label: t.events.status[s], dot: STATUS_DOT[s] }))]} /></div>
+      <div className="mb-4 flex min-h-8 flex-wrap items-center justify-between gap-2 text-sm text-muted">
+        <span aria-live="polite">{res.data && t.common.results(res.data.total)}</span>
+        {p.active && <button onClick={p.clear} className="inline-flex animate-fade-in items-center gap-1.5 rounded-full px-3 py-1 text-navy hover:bg-blue-light"><FilterX className="h-4 w-4" />{t.common.clear}</button>}</div>
+      {res.error ? <ErrorState onRetry={res.refetch} /> : !res.data ? <CardSkeletons count={6} /> : res.data.rows.length === 0 ? <EmptyState text={p.active ? t.events.emptyFiltered : t.events.empty} /> :
+        <ul key={res.data.rows.map(r => r.id).join().slice(0, 120)} className={`stagger grid gap-3 transition-opacity sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 ${res.placeholder ? 'opacity-50' : ''}`}>
+          {res.data.rows.map((e, i) => <EventCard key={e.id} e={e} index={i} />)}</ul>}
+      {res.data && <Pagination page={p.page} total={res.data.total} size={PAGE_SIZE} onChange={goPage} />}</div></>);
 }

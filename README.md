@@ -3,75 +3,67 @@
 Single source of truth for progress. Status legend: `[x]` done & verified · `[ ]` not started · `[/]` in progress · `[!]` blocked · `[?]` needs decision.
 
 ## 1. Overview & stack
-React + TypeScript + Vite + Tailwind 3 + React Router; Supabase (Postgres, Auth, Storage, RLS). Public UI in Thai, code/docs in English.
+React 18 + TypeScript + Vite 5 + Tailwind 3 + React Router 6; Supabase (Postgres, Auth, Storage, RLS); hosted on Vercel (one Edge Function: `api/translate.ts`).
+Public site in **Thai and English** (switch in the header). Admin panel in Thai. Code/docs in English.
 
-## 2. Structure (current)
-- `src/config/site.ts`: association name, nav, placeholders for logo/contact/social (unverified values are `null`)
-- `src/services/` `supabase.ts` (client, env check), `newsService.ts`, `adminService.ts` (sign in/out, `is_admin` RPC)
-- `src/hooks/useAdminGuard.ts`, `src/pages/admin/{AdminLoginPage,RequireAdmin,AdminDashboardPage}.tsx`
-- `src/components/layout/MainLayout.tsx` (Header, Footer, responsive nav), `src/components/common/States.tsx`
-- `src/pages/HomePage.tsx` (hero + latest news from DB), `src/pages/PlaceholderPage.tsx` (all other routes)
-- `supabase/migrations/20261023000001_initial_schema.sql`, `supabase/seed.sql` (intentionally empty)
+## 2. Structure
+- `src/i18n/` `th.ts` (source) / `en.ts` (same shape): every public UI string. `useLang()` gives `{ lang, t, setLang }`; `loc(row, 'title', lang)` picks `title_en` when English is selected and filled, otherwise the Thai column. Choice is saved in `localStorage` (`tca-lang`); `?lang=en` also works.
+- `src/content/` long static content: rules (`rules/*.ts` Thai, `rules/en/*.ts` English), competition formats, About (`about.ts`, `about.en.ts`).
+- `src/lib/` `query.ts` (stale-while-revalidate cache + `prefetch`), `prefetch.ts` (route + data prefetch on hover), `dates.ts` (Thailand-time "today", TH/EN date formatting, Buddhist era in Thai), `translate.ts` (Thai→English machine translation), `images.ts` (resize/compress before upload), `analytics.ts` (anonymous page views).
+- `src/services/publicService.ts` (all public reads), `adminService.ts` (auth, counts, analytics RPC).
+- `src/components/` `common/` (PageHeader, SmartImage, Gallery, Lightbox, DateRangePicker, Segmented, Pagination, EditedBadge, ShareButtons, TopProgress, States…), `news/`, `events/`, `rankings/` (Avatar, Leaderboard), `rules/` (BlockView, Toc, FormatsBlock, ToolBlocks, WordChecker), `layout/MainLayout.tsx`.
+- `src/pages/` public pages (every page except Home is lazy-loaded) and `pages/admin/` (ResourceManager + `resources.tsx` configs for news / competitions / Q&A, AthletesAdminPage, QaAdminPage with visitor-question inbox, AdminDashboardPage + `charts.tsx`).
+- `api/translate.ts` Vercel Edge Function (admin-only proxy to Google Translate); `api/_gtranslate.ts` shared with the Vite dev server.
+- `public/logo/` `tca-logo.jpg` (original, untouched) and transparent versions generated from it: `tca-logo.png/.webp`, `tca-logo-256.png/.webp` (used on the site), `favicon-64.png`.
 
 ## 3. Setup
 ```
 npm install
-cp .env.example .env     # fill VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY (anon key only; never service_role)
-npm run dev | npm run build
+cp .env.example .env     # VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY (anon key only; never service_role)
+npm run dev | npm run build | npm run test:db
 ```
-Database: run the migration in the Supabase SQL editor (or `supabase db push`). First admin: create a user in Dashboard → Authentication, then `insert into public.admin_profiles (user_id, display_name) values ('<uuid>', '<name>');` (see `seed.sql`). There is no public sign-up path to `admin_profiles`.
+First admin: create a user in Supabase → Authentication, then `insert into public.admin_profiles (user_id, display_name) values ('<uuid>', '<name>');`.
 
-## 4. Auth & security design
-- `public.is_admin()` (SECURITY DEFINER, fixed search_path) reads `admin_profiles` (active rows only); never `user_metadata`.
-- RLS on all tables. Public: published rows only. Writes: admin only. `admin_profiles`: own-row read, no write grants/policies.
-- `athlete_rating_history` has no DELETE policy; a trigger blocks editing athlete/game/value/date. Corrections = new row with `corrects_id` + archive the old row.
-- `athletes` has no date_of_birth column by design; `admin_notes` is excluded from anon column grants.
+## 4. Going live with v2 (do in this order)
+1. **Supabase SQL editor:** run `supabase/migrations/20261029000001_v2_bilingual_galleries_analytics.sql` (after migrations 1–6). It is safe to run twice. It converts existing data:
+   news categories → `general` / `competition` (old "ผลการแข่งขัน" → competition, others → general); news/events `archived` → `draft`; events `game_type` → `games[]` (`multiple` → all four games); athletes `draft` or inactive → `archived`; FAQ `draft` → `archived`; first image → `images[]`.
+2. **Deploy the new code right after** (the old deployed site does not understand the new statuses/columns).
+3. Vercel env vars `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` must exist (the translate function reuses them).
+4. In `/admin/news`, `/admin/events`, `/admin/qa`: the button **"แปลอังกฤษที่ยังขาด"** fills English for existing items. In `/admin/rankings`, add the English name of each existing athlete (required on next save).
+
+## 5. Auth & security design
+- `public.is_admin()` (SECURITY DEFINER, fixed search_path) reads `admin_profiles`; never `user_metadata`. RLS on every table; public reads only published rows; writes admin-only.
+- Public column allow-lists (`anon` grants): never `created_by`, `edit_note`, comments, or analytics.
+- `athlete_comments` (private notes): admin-only RLS, no anon grants. `faq_submissions`: visitors may INSERT the `question` column only, never read; flood guard 30 per 10 minutes site-wide. `page_views`: visitors INSERT only; admins read through `admin_analytics()`.
+- `athlete_rating_history` stays append-only (no DELETE policy; facts immutable).
+- `api/translate` checks the caller's Supabase session with `is_admin()` before translating.
 - Frontend route guard is UX only; the database is the security boundary.
-- Storage: buckets `news-images`, `event-images`, `athlete-images` (public read, admin write, 5 MB, JPEG/PNG/WebP).
 
-## 5. Routes
-Public: `/`, `/about`, `/news`, `/news/:id`, `/events`, `/events/:id`, `/rankings` (`?game=crossword|a_math`), `/games`, `/games/crossword`, `/games/a-math`, `/games/kumkom`, `/qa`.
-Admin (guarded): `/admin/login`, `/admin`, `/admin/news`, `/admin/events`, `/admin/rankings`, `/admin/qa`. All 13 routes were smoke-tested at desktop and mobile widths (no JS errors, no horizontal overflow; `/admin` redirects to login when logged out).
+## 6. Features (v2, 29 Oct 2026)
+- **Brand/UI:** transparent logo; new design system (IBM Plex Sans Thai + Kanit, navy/gold/orange from the emblem, rounded cards, floating game-tile hero decoration); animations: page fade, staggered cards, skeleton loaders, top progress bar, sliding segmented controls, animated date picker, lightbox, toasts. `prefers-reduced-motion` disables all motion.
+- **Home:** quick links and footer quick menu removed; news + competitions rows (competitions: pinned first, then newest *added*); whole cards are links; **Top 10 ratings** for Crossword and A-Math (podium + list, photos, default avatar); game cards link to the rules pages.
+- **News / Competitions lists:** search, category or status pills, **date-range picker** (presets + calendar; bottom sheet on phones), no sort menu, 15 per page with numbered pagination; filters live in the URL. Fixed-height cards (2-line title/excerpt clamp). Tall posters are shown whole over a blurred copy (`SmartImage`); multiple images show a photo-count badge.
+- **Competition status** is computed from dates in Thailand time: open (≤ registration deadline) → registration closed (≤ last competition day) → ended. DB columns `reg_close` / `last_date` are generated, so filters run in SQL. Old rows without a deadline close registration the day before the start date.
+- **Detail pages:** gallery + full-screen viewer (swipe/keyboard), info sidebar (registration countdown), documents, share (Facebook/LINE/copy), related news, **"Last edited <date>"** badge showing the full history on hover (popup on touch screens).
+- **Edit history:** changing a *published* news item or competition requires an "what changed" note (enforced by a database trigger; stored in `content_revisions`; auto-translated). Pin/status/translation-only changes need no note; draft edits are not recorded.
+- **Games & Rules:** competition formats moved to the end of `/games`; rules pages have a sticky table of contents with scroll highlighting and reading progress (chip bar on phones).
+- **Rankings:** school/province removed; athlete photos with default avatar; podium for the top 3; Thai/English names.
+- **Q&A:** visitors can send a question (question only, no personal data; honeypot + 30-second client throttle + DB flood guard).
+- **Admin:** slide-over forms; multi-image upload (drag & drop, reorder, first = cover, resized to ≤2000px WebP in the browser); "บันทึก/บันทึกฉบับร่าง" buttons instead of a status menu; news categories general/competition; competitions: multi-select games, registration deadline required, no activity type, computed status; English tab with auto-translation on save (only for empty fields or when the Thai changed and the English was not edited by hand) and per-field re-translate; athletes: photo, Thai + English names (both required, typed by hand), published/archived, private comments; Q&A: published/archived, newest first, **visitor-question inbox** ("ตอบ" opens a pre-filled Q&A form and marks the question answered; unread count badge in the sidebar).
+- **Dashboard:** 4 totals (news, competitions, athletes, Q&A) + visitor analytics: online now, visitors today / this month / all time, daily visitors & page views (7/30/90 days, with table view), top pages, top news, top competitions, busiest hours (Thailand time), devices, language, referrers, new visitors, pages per visit. Auto-refresh every minute.
+- **Speed:** per-page code splitting (first load ~141 KB gzip, was one 604 KB bundle), page data cached and shown instantly when revisiting, code + data prefetched when hovering a link, list queries fetch card columns only, `preconnect` to Supabase, skeletons instead of blank spinners, uploads compressed, long cache headers for `/assets`.
 
-## 6. Status
-**Migrations, run IN ORDER:** `20261023000001_initial_schema` → `20261024000001_fix_triggers_and_rankings` → `20261025000001_athlete_games_and_labels` → `20261026000001_ranked_games_and_hardening` → `20261027000001_faqs` → `20261028000001_pinned_cards`.
-**Database tests:** `npm run test:db` runs every migration on a real Postgres (PGlite) with Supabase-style roles and checks RLS, grants, triggers, ranking views, the save RPC, FAQs and pinning. Latest run: 72 passed, 0 failed. This is a local emulation and does NOT replace testing on the real Supabase project.
+## 7. Testing
+- `npm run test:db`: runs migrations on PGlite with Supabase-style roles. `db.test.mjs 6` (migrations 1–6, 72 tests) + `v2.test.mjs` (old-shape data → migration 7 twice → mapping, RLS, grants, edit-note trigger, computed status, athlete RPC, comments, submissions + flood guard, analytics RPC; 40 tests). Latest: 112 passed, 0 failed.
+- UI verified in Chromium against a local mock of the Supabase API (desktop 1280px, tablet 800px, phone 390px; Thai and English; admin login, forms, edit-note enforcement, inbox answer flow): no console errors.
+- **Not yet tested against the real Supabase project** (migration 7 must be run there first) and the Vercel `api/translate` function has not been deployed/tested.
 
-### Done in this session (built and browser-tested; NOT tested against a real Supabase project)
-- **Official logo**: `public/logo/tca-logo.jpg` is the supplied file, byte-for-byte unmodified (637x535). CSS sets only `height`, `width:auto`, so the ratio is preserved (measured 1.19 = original). Used in the desktop header, the mobile bar (inside a white pill because the JPEG has a white background), the footer, the About hero and the favicon. `src/config/site.ts` now uses the name printed on the logo: "สมาคมครอสเวิร์ดเกม เอแม็ท คำคม และซูโดกุ แห่งประเทศไทย" / "Thailand Crossword Game A-Math Kumkom and Sudoku Association" (previously "ครอสเวิร์ด" without "เกม").
-- **About page** (`src/pages/AboutPage.tsx`, content in `src/content/about.ts`): written only from verifiable sources (press releases 2010-2026, the association's rules PDFs, the logo); each timeline item links to its source. Unverified items (founding year, mission/vision, current officers, contact details, statistics) are shown as "pending confirmation", not as facts. The Facebook page could not be read automatically (robots disallowed): nothing is taken from it, it is only linked.
-- **Crossword Challenge**: link to the official Collins tools page. **Word checker** uses ENABLE (public-domain list, 172,823 words) because Collins word lists are copyrighted and cannot be embedded; results are labelled as an unofficial reference ("QI" is not in ENABLE but is valid in Collins) and a link to Collins' CHECK page is provided. No scraping, no API. Credits: `public/dictionary/SOURCES.txt`.
-- **Kumkom Challenge + checker**: the web checker uses the supplied `words.txt` (37,627 lines; 37,626 after Unicode NFC de-duplication), exact match. Windows program kit: `tools/kumkom-challenge/` (original `RBD2026.py` unchanged, `database/words.txt`, `build_windows.bat`, `.github/workflows/build-kumkom-challenge.yml`, README). Tested: the program loads 37,627 words and answers pass/fail correctly under tkinter (headless Linux); a PyInstaller build on Linux bundles `database/words.txt` and starts. **The Windows `.exe` has NOT been built or tested** (PyInstaller cannot cross-compile); until then the site shows an "in preparation" notice. To publish: build on Windows (or run the GitHub Action), copy to `public/downloads/ThaiWordChallenge.exe`, set `kumkomExe.available = true` in `src/content/rules/tools.ts`.
-- **Competition formats**: all 16 formats (Green and Guelph are two related systems, shown together as in the requested list) on all three rules pages after "End game", each with how it works / pairing / example / when to use. Definitions follow John J. Chew III's tsh documentation (linked on the page); examples are illustrative. Content: `src/content/rules/formats.ts`.
-- **Pinned cards**: `is_pinned` + database-managed `pinned_at` on `news` and `events` (migration 6). Admin: pin/unpin button, gold badge and row highlight, a form checkbox, and a warning when more than 5 live items are pinned. Home: one query per section (`order is_pinned desc, pinned_at desc, newest`, `limit 5`), so no duplicates and pinned items count toward the 5; news and competitions are independent. The Home competitions section now lists published events of any status (newest start date first) instead of upcoming-only, as requested; /news and /events keep their normal sorting.
-- **Cards**: phone = compact horizontal cards (88px thumbnail, title, date, status/pin; whole card tappable); tablet/desktop = original vertical cards in ONE non-wrapping row (256px each) with arrow buttons plus touch/trackpad scrolling. Verified at 1280, 820 and 390 px.
+## 8. Known limitations / open items
+- [!] **Machine translation** uses Google Translate's free web endpoint (as requested). During development it returned HTTP 429 (rate-limited) from this machine, so auto-translation could not be confirmed end-to-end. If it fails, admins see a notice and can type English by hand; the public English page falls back to Thai. Switching to an official API later only touches `src/lib/translate.ts` and `api/_gtranslate.ts`.
+- [?] English translations of the rules and About page were written by hand from the Thai text; the association should review them. The Thai PDF remains the official rules.
+- [?] Uploaded images that are removed from a form stay in Storage (no automatic cleanup).
+- [?] A-Math equation squares, Kumkom = Thaismith PDF, About-page pending items, official rating formula: unchanged from before (see git history).
+- [ ] Windows `ThaiWordChallenge.exe` still not built (see `tools/kumkom-challenge/README.md`); CSV import/export; Sudoku rules page.
 
-### Open items
-- [?] A-Math yellow/red "Equation" squares are shown as multiplying the whole equation (the PDF equipment list words them like piece squares; its blank-tile rule says whole equation). Confirm with the association.
-- [?] "Kumkom" = the Thaismith PDF; the Crossword PDF file name says 3_2025 but its cover says Ver.16/6/2026.
-- [?] About page pending items (above). The current-rating rule for rankings is still provisional.
-- [ ] Rich text editor, upload progress bar, CSV import/export, duplicate-athlete resolution, ranking categories, athlete profile page, Sudoku rules page.
-
-### Test files review
-- Removed (disposable, regenerable): `dist/`, `tools/kumkom-challenge/__pycache__`, the scratch copy of the DB test harness and the PyInstaller trial build outside the project, one-off browser scripts/screenshots in /tmp.
-- Kept on purpose: `supabase/tests/db.test.mjs`, the `test:db` script and the `@electric-sql/pglite` dev dependency. Nothing in `src/` imports them and they are not in the production bundle, but they are the only automated check of the security policies. To remove them anyway: delete `supabase/tests/`, the `test:db` script and the `@electric-sql/pglite` devDependency; the app is unaffected.
-- Not test files despite their names: `supabase/seed.sql` (documents first-admin creation), `public/dictionary/*` (production data for the word checkers).
-
-## 7. Blockers / decisions
-- [!] Supabase project URL + anon key (needed to test anything against a database)
-- [?] Official logo, English name, history/vision/mission, contact, social accounts, rules text/documents
-- [?] Official rating formula, "current rating" rule, tie-breaking, ranking category definitions. Not implemented; no `current rating` view exists yet
-- [?] Event status precedence if auto-calculated statuses are wanted. Currently only the stored admin value would be shown
-- [?] Whether Hall of Fame should show linked event title live or the snapshot `event_name` (trigger currently snapshots on insert)
-
-## 8. Known limitations
-No tests against a real Supabase project; no Windows `.exe` built; the word checkers match exactly (Thai tone-mark/vowel order matters) and the English list is not the official Collins list; browser checks ran in headless Chromium only.
-
-## 9. Next tasks (in order)
-1. Run migrations 5 and 6 on Supabase; test pinning in `/admin/news` and `/admin/events`, then check the Home page.
-2. Build `ThaiWordChallenge.exe` on Windows (or via GitHub Actions), test it, publish it (see `tools/kumkom-challenge/README.md`).
-3. Get the About-page pending items and the [?] items confirmed by the association.
-4. CSV import/export, rating-rule confirmation, RLS checks on the real project.
-
-## 10. How to Resume Development
-1. Read this whole README. 2. Inspect the repo and `git status`. 3. Compare code to this file. 4. Verify claimed statuses (run `npm run build`). 5. Continue from the first unfinished task above. 6. Preserve existing work; don't recreate it. 7. Update this README after the next verified milestone. 8. Run relevant tests/builds. 9. Report blockers honestly. If repo and README disagree, the repo wins; fix the README.
+## 9. How to resume
+1. Read this README. 2. `git status`. 3. `npm run build && npm run test:db`. 4. Continue from §4 / §8. If repo and README disagree, the repo wins; fix the README.

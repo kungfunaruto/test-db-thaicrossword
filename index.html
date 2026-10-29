@@ -2,11 +2,18 @@
 <html lang="th">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/jpeg" href="/logo/tca-logo.jpg" />
+    <link rel="icon" type="image/png" href="/logo/favicon-64.png" />
+    <link rel="apple-touch-icon" href="/logo/tca-logo-256.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0F2A47" />
     <meta name="description" content="เว็บไซต์ทางการของสมาคมครอสเวิร์ดเกม เอแม็ท คำคม และซูโดกุ แห่งประเทศไทย" />
+    <!-- Open the connection to the database early so the first data request is faster. -->
+    <link rel="preconnect" href="%VITE_SUPABASE_URL%" crossorigin />
+    <link rel="dns-prefetch" href="%VITE_SUPABASE_URL%" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&family=Noto+Serif+Thai:wght@600;700&display=swap" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Kanit:wght@400;500;600&display=swap" />
+    <link rel="preload" as="image" href="/logo/tca-logo-256.webp" type="image/webp" />
     <title>สมาคมครอสเวิร์ดเกม เอแม็ท คำคม และซูโดกุ แห่งประเทศไทย</title>
   </head>
   <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
