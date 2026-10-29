@@ -1,4 +1,4 @@
-// Tests the Excel import function (migration 8) on PGlite with Supabase-style roles.
+// Tests rating import + undo (migration 8) on PGlite with Supabase-style roles.
 import { PGlite } from '@electric-sql/pglite';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -23,41 +23,60 @@ const as = async (role, uid, fn) => { await db.exec(`reset role; set role ${role
 const rows = async (s, p) => (await db.query(s, p)).rows;
 const throws = async (fn, msg) => { try { await fn(); return false; } catch (e) { return msg ? e.message.includes(msg) : true; } };
 const admin = fn => as('authenticated', A, fn), anon = fn => as('anon', null, fn), user = fn => as('authenticated', U, fn);
-const imp = (list, date = '2026-11-01') => rows('select public.admin_import_athletes($1::jsonb, $2::date) r', [JSON.stringify(list), date]).then(r => r[0].r);
-const hist = id => rows(`select game_type, rating_value::float v, effective_date::text d, source_type from public.athlete_rating_history where athlete_id=$1 order by created_at`, [id]);
+const imp = (game, list, date = '2026-11-01', file = 'ratings.xlsx') => rows('select public.admin_import_ratings($1, $2::date, $3, $4::jsonb) r', [game, date, file, JSON.stringify(list)]).then(r => r[0].r);
+const undo = id => rows('select public.admin_revert_rating_import($1::uuid) r', [id]).then(r => r[0].r);
+const cur = (id, g) => rows(`select rating_value::float v from public.current_ratings where athlete_id=$1 and game_type=$2`, [id, g]).then(r => r[0]?.v ?? null);
+const SAVE = `select public.admin_save_athlete($1::uuid,$2::text,$3::text,null,$4::text[],'published',$5::jsonb,'2026-01-01'::date) id`;
 
-let s1, ids;
-await t('creates new athletes with ratings (games added automatically)', () => admin(async () => {
-  s1 = await imp([{ row: 2, full_name: 'สมชาย ใจดี', full_name_en: 'Somchai Jaidee', ratings: { crossword: 1500, a_math: 1400 } },
-    { row: 3, full_name: 'สมหญิง เก่ง', full_name_en: 'Somying Keng', status: 'archived', ratings: { crossword: 1600, a_math: null } }]);
-  ids = Object.fromEntries((await rows('select id, full_name, games, publication_status from public.athletes')).map(r => [r.full_name, r]));
-  return s1.created === 2 && s1.ratings_added === 3 && [...ids['สมชาย ใจดี'].games].sort().join() === 'a_math,crossword' && ids['สมหญิง เก่ง'].games.join() === 'crossword' && ids['สมหญิง เก่ง'].publication_status === 'archived'; }));
-await t('history rows use the chosen date and source csv_import', () => admin(async () => { const h = await hist(ids['สมชาย ใจดี'].id); return h.length === 2 && h.every(x => x.d === '2026-11-01' && x.source_type === 'csv_import'); }));
-await t('re-importing the same values changes nothing', () => admin(async () => {
-  const r = await imp([{ row: 2, id: ids['สมชาย ใจดี'].id, full_name: 'สมชาย ใจดี', full_name_en: 'Somchai Jaidee', status: 'published', ratings: { crossword: 1500, a_math: 1400 } }]);
-  return r.updated === 0 && r.unchanged === 1 && r.ratings_added === 0 && (await hist(ids['สมชาย ใจดี'].id)).length === 2; }));
-await t('changed rating appends history; empty cells keep values', () => admin(async () => {
-  const r = await imp([{ row: 2, id: ids['สมชาย ใจดี'].id, full_name: '', full_name_en: null, ratings: { crossword: 1550, a_math: null } }], '2026-12-01');
-  const a = (await rows('select full_name, full_name_en from public.athletes where id=$1', [ids['สมชาย ใจดี'].id]))[0];
-  const cur = (await rows(`select rating_value::float v from public.current_ratings where athlete_id=$1 and game_type='crossword'`, [ids['สมชาย ใจดี'].id]))[0].v;
-  return r.updated === 1 && r.ratings_added === 1 && a.full_name === 'สมชาย ใจดี' && a.full_name_en === 'Somchai Jaidee' && cur === 1550 && (await hist(ids['สมชาย ใจดี'].id)).length === 3; }));
-await t('edits names and status by id', () => admin(async () => {
-  await imp([{ row: 5, id: ids['สมหญิง เก่ง'].id, full_name: 'สมหญิง เก่งมาก', full_name_en: 'Somying Kengmak', status: 'published', ratings: {} }]);
-  const a = (await rows('select full_name, full_name_en, publication_status from public.athletes where id=$1', [ids['สมหญิง เก่ง'].id]))[0];
-  return a.full_name === 'สมหญิง เก่งมาก' && a.full_name_en === 'Somying Kengmak' && a.publication_status === 'published'; }));
-await t('one bad row rolls back the whole file', () => admin(async () => {
-  const before = (await rows('select count(*)::int n from public.athletes'))[0].n;
-  const bad = await throws(() => imp([{ row: 2, full_name: 'ใหม่ หนึ่ง', full_name_en: 'New One', ratings: { crossword: 1000 } }, { row: 3, full_name: 'ใหม่ สอง', full_name_en: '', ratings: {} }]), 'ROW 3');
-  return bad && (await rows('select count(*)::int n from public.athletes'))[0].n === before; }));
-await t('rejects negative / non-number rating, unrated game, bad status, unknown or malformed id', () => admin(async () =>
-  (await throws(() => imp([{ row: 9, id: ids['สมชาย ใจดี'].id, ratings: { crossword: -5 } }]), 'negative'))
-  && (await throws(() => imp([{ row: 9, id: ids['สมชาย ใจดี'].id, ratings: { crossword: '12a' } }]), 'number'))
-  && (await throws(() => imp([{ row: 9, id: ids['สมชาย ใจดี'].id, ratings: { sudoku: 10 } }]), 'no ratings'))
-  && (await throws(() => imp([{ row: 9, id: ids['สมชาย ใจดี'].id, status: 'draft' }]), 'status'))
-  && (await throws(() => imp([{ row: 9, id: '11111111-1111-4111-8111-111111111111' }]), 'not found'))
-  && (await throws(() => imp([{ row: 9, id: 'abc' }]), 'invalid athlete id'))));
-await t('ranking view shows imported athletes', () => anon(async () => (await rows(`select full_name, rank from public.national_rankings where game_type='crossword' order by rank`)).map(r => r.full_name).join() === 'สมหญิง เก่งมาก,สมชาย ใจดี'));
-await t('anon and non-admin cannot import', async () => (await anon(() => throws(() => imp([])))) && (await user(() => throws(() => imp([]), 'forbidden'))));
-await t('date required; row limit', () => admin(async () => (await throws(() => imp([], null), 'date')) && (await throws(() => imp(Array.from({ length: 5001 }, () => ({}))), '5000'))));
+let somchai, somying, imp1, imp2, newbie;
+await t('setup: two existing athletes', () => admin(async () => {
+  somchai = (await rows(SAVE, [null, 'สมชาย ใจดี', 'Somchai Jaidee', '{crossword}', JSON.stringify([{ game: 'crossword', value: 1500 }])]))[0].id;
+  somying = (await rows(SAVE, [null, 'สมหญิง เก่ง', 'Somying Keng', '{crossword}', JSON.stringify([{ game: 'crossword', value: 1600 }])]))[0].id;
+  return !!somchai && !!somying; }));
+await t('import A-Math: existing athlete gets the game + rating; new athlete created; log written', () => admin(async () => {
+  imp1 = await imp('a_math', [{ row: 2, athlete_id: somchai, rating: 1400 }, { row: 3, athlete_id: null, name: 'นักกีฬา ใหม่', name_en: 'New Player', rating: 1300 }]);
+  newbie = (await rows(`select id, games, created_import_id, full_name_en from public.athletes where full_name='นักกีฬา ใหม่'`))[0];
+  const log = (await rows('select * from public.rating_imports where id=$1', [imp1.import_id]))[0];
+  const g = (await rows('select games from public.athletes where id=$1', [somchai]))[0].games;
+  return imp1.changed === 1 && imp1.created === 1 && g.includes('a_math') && (await cur(somchai, 'a_math')) === 1400 && newbie.games.join() === 'a_math' && newbie.created_import_id === imp1.import_id
+    && newbie.full_name_en === 'New Player' && log.rows_total === 2 && log.ratings_changed === 1 && log.athletes_created === 1 && log.game_type === 'a_math' && log.file_name === 'ratings.xlsx'; }));
+await t('import Crossword: changed + unchanged counted; history keeps the old value', () => admin(async () => {
+  imp2 = await imp('crossword', [{ row: 2, athlete_id: somchai, rating: 1550 }, { row: 3, athlete_id: somying, rating: 1600 }], '2026-12-01');
+  const h = await rows(`select rating_value::float v from public.athlete_rating_history where athlete_id=$1 and game_type='crossword' order by created_at`, [somchai]);
+  return imp2.changed === 1 && imp2.unchanged === 1 && h.map(x => x.v).join() === '1500,1550' && (await cur(somchai, 'crossword')) === 1550; }));
+await t('undo restores the previous rating and keeps the history row (archived)', () => admin(async () => {
+  const r = await undo(imp2.import_id);
+  const h = await rows(`select publication_status from public.athlete_rating_history where import_id=$1`, [imp2.import_id]);
+  const log = (await rows('select status, reverted_at from public.rating_imports where id=$1', [imp2.import_id]))[0];
+  return r.ratings_archived === 1 && (await cur(somchai, 'crossword')) === 1500 && h.length === 1 && h[0].publication_status === 'archived' && log.status === 'reverted' && log.reverted_at !== null; }));
+await t('undo twice is refused', () => admin(() => throws(() => undo(imp2.import_id), 'already undone')));
+await t('undoing an import archives the athletes it created', () => admin(async () => {
+  const r = await undo(imp1.import_id);
+  const a = (await rows('select publication_status from public.athletes where id=$1', [newbie.id]))[0];
+  return r.athletes_archived === 1 && a.publication_status === 'archived' && (await cur(somchai, 'a_math')) === null
+    && (await anon(() => rows(`select 1 from public.national_rankings where game_type='a_math'`))).length === 0; }));
+await t('a created athlete with later ratings from another import is NOT archived on undo', () => admin(async () => {
+  const i3 = await imp('crossword', [{ row: 2, athlete_id: null, name: 'คนใหม่ สาม', rating: 1000 }]);
+  const id3 = (await rows(`select id from public.athletes where full_name='คนใหม่ สาม'`))[0].id;
+  await imp('crossword', [{ row: 2, athlete_id: id3, rating: 1100 }]);
+  const r = await undo(i3.import_id);
+  return r.athletes_archived === 0 && (await rows('select publication_status from public.athletes where id=$1', [id3]))[0].publication_status === 'published' && (await cur(id3, 'crossword')) === 1100; }));
+await t('one bad row rolls back everything (no log, no athlete)', () => admin(async () => {
+  const before = (await rows('select (select count(*) from public.athletes)::int a, (select count(*) from public.rating_imports)::int i'))[0];
+  const bad = await throws(() => imp('crossword', [{ row: 2, athlete_id: null, name: 'จะไม่ถูกบันทึก', rating: 900 }, { row: 3, athlete_id: somchai, rating: -1 }]), 'ROW 3');
+  const after = (await rows('select (select count(*) from public.athletes)::int a, (select count(*) from public.rating_imports)::int i'))[0];
+  return bad && after.a === before.a && after.i === before.i; }));
+await t('rejects unrated game, missing name, text rating, unknown/duplicate athlete, empty file', () => admin(async () =>
+  (await throws(() => imp('sudoku', [{ row: 2, athlete_id: somchai, rating: 1 }]), 'no ratings'))
+  && (await throws(() => imp('crossword', [{ row: 2, athlete_id: null, name: ' ', rating: 1 }]), 'name is required'))
+  && (await throws(() => imp('crossword', [{ row: 2, athlete_id: somchai, rating: '1x' }]), 'number'))
+  && (await throws(() => imp('crossword', [{ row: 2, athlete_id: '11111111-1111-4111-8111-111111111111', rating: 1 }]), 'not found'))
+  && (await throws(() => imp('crossword', [{ row: 2, athlete_id: somchai, rating: 1 }, { row: 3, athlete_id: somchai, rating: 2 }]), 'more than once'))
+  && (await throws(() => imp('crossword', []), 'nothing to import'))));
+await t('anon / non-admin cannot import, undo or read the log', async () => (await anon(() => throws(() => imp('crossword', [{ row: 2, athlete_id: somchai, rating: 1 }]))))
+  && (await user(() => throws(() => imp('crossword', [{ row: 2, athlete_id: somchai, rating: 1 }]), 'forbidden'))) && (await user(() => throws(() => undo(imp1.import_id), 'forbidden')))
+  && (await anon(() => throws(() => rows('select id from public.rating_imports')))) && (await user(async () => (await rows('select id from public.rating_imports')).length === 0)));
+await t('public cannot see import_id / created_import_id', async () => (await anon(() => throws(() => rows('select import_id from public.athlete_rating_history'))))
+  && (await anon(() => throws(() => rows('select created_import_id from public.athletes')))));
 console.log(`import: ${pass} passed, ${failed.length} failed`); failed.forEach(f => console.log(' FAIL:', f));
 if (failed.length) process.exit(1);

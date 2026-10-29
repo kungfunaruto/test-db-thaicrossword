@@ -11,7 +11,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../components/common/St
 import Avatar from '../../components/rankings/Avatar';
 import ImagesField from './ImagesField';
 import { AdminHeader, Chips, Drawer, Field, Panel, Pills, PubBadge } from './ui';
-import ImportAthletesDialog from './ImportAthletesDialog';
+import ImportRatingsDialog from './ImportRatingsDialog';
 
 interface Ath { id: string; full_name: string; full_name_en: string | null; photo_url: string | null; games: string[]; publication_status: 'published' | 'archived' }
 interface Cur { athlete_id: string; game_type: string; rating_value: number }
@@ -160,7 +160,7 @@ export default function AthletesAdminPage() {
     toast('ok', 'ลบนักกีฬาแล้ว'); setDel(null); invalidate('rank:'); load();
   }
   return (<div className="mx-auto max-w-6xl">
-    <AdminHeader title="นักกีฬาและอันดับ" sub={aths ? `ทั้งหมด ${aths.length} คน` : undefined} action={<div className="flex flex-wrap gap-2"><button onClick={() => setExcel(true)} disabled={!aths} className="btn-outline"><FileSpreadsheet className="h-4 w-4 text-emerald-600" />นำเข้า / แก้ไขด้วย Excel</button>
+    <AdminHeader title="นักกีฬาและอันดับ" sub={aths ? `ทั้งหมด ${aths.length} คน` : undefined} action={<div className="flex flex-wrap gap-2"><button onClick={() => setExcel(true)} disabled={!aths} className="btn-outline"><FileSpreadsheet className="h-4 w-4 text-emerald-600" />นำเข้าเรตติ้งจาก Excel</button>
       <button onClick={() => setEdit('new')} className="btn-primary"><Plus className="h-4 w-4" />เพิ่มนักกีฬา</button></div>} />
     <p className="mb-4 rounded-2xl bg-blue-light p-4 text-sm text-navy-dark">ระบบเรตติ้งมีเฉพาะครอสเวิร์ดและเอแม็ท นักกีฬาจะแสดงในหน้าอันดับเมื่อสถานะเป็น "เผยแพร่" ได้เลือกกีฬานั้น และมีเรตติ้ง</p>
     <div className="card mb-4 flex flex-col gap-3 p-3 sm:flex-row">
@@ -179,7 +179,7 @@ export default function AthletesAdminPage() {
           <button aria-label="ลบ" title="ลบ" onClick={() => setDel(a)} className="grid h-9 w-9 place-items-center rounded-full text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button></div></li>))}</ul>}
     {edit && <AthleteForm a={edit === 'new' ? null : edit} cur={cur} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} onComments={loadNotes} />}
     {hist && <HistoryModal a={hist} onClose={() => setHist(null)} onChanged={load} />}
-    {excel && aths && <ImportAthletesDialog athletes={aths} cur={(id, g) => cur[key(id, g)]} onClose={() => setExcel(false)} onDone={() => { setExcel(false); load(); }} />}
+    {excel && aths && <ImportRatingsDialog athletes={aths} cur={(id, g) => cur[key(id, g)]} onClose={() => setExcel(false)} onChanged={load} />}
     <ConfirmDialog open={!!del} title="ลบนักกีฬา" message="ต้องการลบนักกีฬาคนนี้หรือไม่? การลบไม่สามารถย้อนกลับได้" busy={deleting} onConfirm={remove} onCancel={() => setDel(null)} />
   </div>);
 }
